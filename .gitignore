@@ -1,0 +1,24 @@
+# ===== 签名与密钥：绝对不能入库 =====
+# release.jks 是签名私钥，keystore.properties 存签名口令。
+# 一旦泄露，他人可伪造出能被系统当作「正版升级」安装的 APK。
+keystore.properties
+*.jks
+*.keystore
+
+# 本机专属路径（各人 SDK 安装位置不同，入库会导致别人构建失败）
+local.properties
+
+# ===== 构建产物：不入库，APK 走 GitHub Releases 分发 =====
+build/
+app/build/
+.gradle/
+*.apk
+*.aab
+*.ap_
+captures/
+.cxx/
+
+# ===== IDE =====
+.idea/
+*.iml
+.DS_Store

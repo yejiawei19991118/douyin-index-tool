@@ -1,0 +1,55 @@
+// 应用模块：抖音指数人群分析自动抓取工具。
+// 纯 Android 框架实现，运行时零第三方依赖。
+plugins {
+    id 'com.android.application'
+}
+
+// release 签名信息来自根目录 keystore.properties（与 keystore 一起保管，不进版本库）。
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file('keystore.properties')
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    namespace 'com.lmt.dyindex'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.lmt.dyindex"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // 用 release keystore 签名，产物可直接安装并支持后续同签名覆盖升级。
+            signingConfig signingConfigs.release
+            // 纯 WebView 外壳，无需混淆。
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // 运行时零第三方依赖：仅框架 API。
+}
