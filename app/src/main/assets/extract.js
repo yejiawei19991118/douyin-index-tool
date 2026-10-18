@@ -19,6 +19,8 @@
   var REGION_TABS = ['城市', '城市级别', '省份'];
   // 性别区块容器内的文本（供诊断快照回传）。
   var lastGenderBoxText = '';
+  // 用户内容浏览分布区的采集概况（主标签数 / 成功下钻数 / 采集行数），供诊断快照回传。
+  var lastBrowsingTabs = '';
 
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
@@ -281,6 +283,225 @@
     return out;
   }
 
+  // ---------- 用户内容浏览分布（主标签 → 子标签，柱状图点击下钻）----------
+  // 实机排查结论：该区块**不是页签结构，而是柱状图**——主标签就是柱子（x 轴类别），
+  // 子标签必须「点击柱子」下钻后才会出现，页面 DOM 里没有预渲染。
+  // 例：点击「时尚」→ 子层出现 时尚_穿搭 / 时尚_美妆 / 时尚_美发 / 时尚_美容。
+  // 下钻后区块内出现可点击的「返回上一级」，点它回到主层，再点下一个主标签。
+  //
+  // 三个实机约束（均已在真机验证）：
+  //   ① tooltip 按 x 邻近命中，故「读」只需一行 y 扫 x，不必多行；
+  //   ② 点击必须落在柱体上：柱底基线约在 canvas 高度的 0.83 处，故点击 y 取 0.80；
+  //      取 0.88 会落到坐标轴下方，点了没反应；
+  //   ③ tooltip 不会自动消失，最左侧 y 轴空白区会读到上一次的残留值。
+  //      对策：同名以「最后一次出现」的 xf 为准（残留只在最左，会被真实柱体覆盖），
+  //      子层再用「主标签_」前缀过滤兜底。
+
+  function rectOf(el) { try { return el.getBoundingClientRect(); } catch (e) { return null; } }
+
+  function isVisible(el) {
+    try {
+      var st = getComputedStyle(el);
+      if (st && (st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0)) return false;
+    } catch (e) { /* 取不到样式时按可见处理 */ }
+    var r = rectOf(el);
+    return !r || r.width > 0 || r.height > 0;
+  }
+
+  // 区块容器：从标题纯文本节点向上找「最低的、含图表 canvas 的祖先」，最多上溯 8 层。
+  function sectionRoot(title) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node, label = null;
+    while ((node = walker.nextNode())) {
+      var s = (node.nodeValue || '').replace(/\s+/g, '');
+      if (!s || s.length > 20) continue;
+      if (s.indexOf(title) >= 0 && node.parentElement) { label = node.parentElement; break; }
+    }
+    if (!label) return null;
+    var cur = label, depth = 0;
+    while (cur && cur !== document.body && depth < 8) {
+      if (cur.querySelector && cur.querySelector('.lightcharts-container canvas')) return cur;
+      cur = cur.parentElement;
+      depth++;
+    }
+    return label.parentElement || label;
+  }
+
+  // 从区块容器再向上找「含『返回上一级』的那层容器」。该按钮在下钻后出现，
+  // 主层时也在 DOM 里（宽 0 不可见），故按文本上溯即可。
+  function drillHost(root) {
+    var cur = root, depth = 0;
+    while (cur && cur !== document.body && depth < 8) {
+      if ((cur.textContent || '').indexOf('返回上一级') >= 0) return cur;
+      cur = cur.parentElement;
+      depth++;
+    }
+    return root || document.body;
+  }
+
+  // 取区块当前图表的 canvas 与 tooltip（下钻会重绘，故一律现取现用）。
+  function browsingChart(title) {
+    var root = sectionRoot(title);
+    var c = root && root.querySelector('.lightcharts-container');
+    if (!c) return null;
+    var holder = c.parentElement;
+    var canvas = c.querySelector('canvas');
+    var tip = holder ? holder.querySelector('.lightcharts-tooltip') : null;
+    if (!canvas || !tip) return null;
+    return { section: title, canvas: canvas, tip: tip, root: root };
+  }
+
+  function chartStale(ch) {
+    return !ch || !ch.canvas || !ch.canvas.isConnected || !ch.tip;
+  }
+
+  // 区块内可见的「返回上一级」叶子元素（主层时它在 DOM 里但不可见，故必须按可见性过滤）。
+  function backButton(host) {
+    var all = (host || document).querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+      var e = all[i];
+      if (e.children.length) continue;
+      if ((e.textContent || '').indexOf('返回上一级') < 0) continue;
+      if (!isVisible(e)) continue;
+      return e;
+    }
+    return null;
+  }
+
+  // 在 canvas 上补发按下 / 抬起 / 点击（模拟真实鼠标），用于把柱体「点开」下钻。
+  async function clickChart(canvas, r, xf, yf) {
+    var x = r.left + r.width * xf, y = r.top + r.height * yf;
+    try {
+      canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }));
+      canvas.dispatchEvent(new MouseEvent('mousedown', { clientX: x, clientY: y, bubbles: true }));
+      canvas.dispatchEvent(new MouseEvent('mouseup', { clientX: x, clientY: y, bubbles: true }));
+      canvas.dispatchEvent(new MouseEvent('click', { clientX: x, clientY: y, bubbles: true }));
+    } catch (e) { return false; }
+    await sleep(1300);
+    return true;
+  }
+
+  // 单行（yFrac）扫 x：tooltip 按 x 邻近命中，一行即可覆盖全部柱子。
+  // 同名以「最后一次出现」的 xf 为准：最左侧 y 轴空白区会读到残留 tooltip，
+  // 而残留只出现在最前，之后一定会被真实柱体覆盖，故取最后位置即可自动校正。
+  async function sweepBars(chart, steps, yFrac) {
+    var order = [], idx = {};
+    if (chartStale(chart)) return order;
+    var canvas = chart.canvas, tip = chart.tip;
+    var r = rectOf(canvas);
+    if (!r || r.width < 2 || r.height < 2) return order;
+    var y = r.top + r.height * yFrac;
+    for (var i = 1; i <= steps; i++) {
+      var xf = i / (steps + 1);
+      var x = r.left + r.width * xf;
+      try {
+        canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }));
+        canvas.dispatchEvent(new MouseEvent('mouseover', { clientX: x, clientY: y, bubbles: true }));
+        if (window.PointerEvent) {
+          canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+        }
+      } catch (e) { /* 合成事件失败则跳过该点 */ }
+      await sleep(12);
+      var raw = '';
+      try { raw = (tip.innerText || '').trim(); } catch (e) { raw = ''; }
+      if (!raw) continue;
+      var it = parseTip(raw);
+      if (!it) continue;
+      if (idx[it.name] === undefined) {
+        idx[it.name] = order.length;
+        it.xf = xf;
+        order.push(it);
+      } else {
+        var prev = order[idx[it.name]];           // 同名「后出现」的位置 / 数值更可信，覆盖之
+        prev.xf = xf;
+        prev.ratio = it.ratio;
+        prev.tgi = it.tgi;
+      }
+    }
+    return order;
+  }
+
+  // 扫描区块「当前视图」的图表；每次都重新查询，避免持有切换页签后已失效的引用。
+  async function scanSection(title) {
+    var chart = findChartIn(getCharts(), title);
+    if (!chart) {
+      var root = sectionRoot(title);
+      var c = root && root.querySelector('.lightcharts-container');
+      if (c) {
+        var holder = c.parentElement;
+        chart = {
+          section: title,
+          canvas: c.querySelector('canvas'),
+          tip: holder ? holder.querySelector('.lightcharts-tooltip') : null
+        };
+      }
+    }
+    return chart ? await scanCanvas(chart) : [];
+  }
+
+  // 用户内容浏览分布：主层扫出全部主标签 → 逐个点柱体下钻扫子层 → 点「返回上一级」回主层。
+  // 返回的是「平铺数组」：先主标签行（如「时尚」），紧接其子标签行（如「时尚_穿搭」），
+  // 层级由名字本身表达，故 buildCsv 的数组分支可直接输出，无需额外结构。
+  async function extractBrowsing() {
+    var title = '用户内容浏览分布';
+    var chart = browsingChart(title);
+    if (chartStale(chart)) {
+      lastBrowsingTabs = '未找到图表容器，退回单层扫描';
+      return await scanSection(title);
+    }
+
+    // 主层：一行扫 x，拿到全部主标签及其柱体的横向位置。
+    var mains = await sweepBars(chart, 60, 0.3);
+    if (!mains.length) {
+      lastBrowsingTabs = '未扫到主标签柱体，退回单层扫描';
+      return await scanSection(title);
+    }
+
+    var out = [], seen = {}, drilled = 0;
+    for (var k = 0; k < mains.length; k++) {
+      var main = mains[k];
+      if (chartStale(chart)) chart = browsingChart(title);
+      if (chartStale(chart)) break;
+      var r = rectOf(chart.canvas);
+      if (!r) break;
+
+      await clickChart(chart.canvas, r, main.xf, 0.80);   // 点柱体下钻
+      var back = backButton(drillHost(chart.root));
+      if (!back) {
+        // 没钻进去（点到空白 / 该标签无子层）：仅记录主标签本身，不丢数据。
+        if (!seen[main.name]) { seen[main.name] = 1; out.push({ name: main.name, ratio: main.ratio, tgi: main.tgi }); }
+        continue;
+      }
+      drilled++;
+      if (!seen[main.name]) { seen[main.name] = 1; out.push({ name: main.name, ratio: main.ratio, tgi: main.tgi }); }
+
+      // 子层：再扫一行；子标签名为「主标签_子标签」，用前缀过滤掉起始处的残留值。
+      if (chartStale(chart)) chart = browsingChart(title);
+      var subs = chartStale(chart) ? [] : await sweepBars(chart, 40, 0.3);
+      var kept = [], pref = main.name + '_';
+      for (var s = 0; s < subs.length; s++) {
+        if (subs[s].name.indexOf(pref) === 0) kept.push(subs[s]);
+      }
+      if (!kept.length) kept = subs;                      // 命名规则若变化则兜底
+      for (var t = 0; t < kept.length; t++) {
+        var it = kept[t];
+        if (!it.name || it.name === main.name || seen[it.name]) continue;
+        seen[it.name] = 1;
+        out.push({ name: it.name, ratio: it.ratio, tgi: it.tgi });
+      }
+
+      try { back.click(); } catch (e) { /* 点不动也继续下一个 */ }
+      await sleep(1000);                                  // 等图表回到主层再继续
+    }
+
+    lastBrowsingTabs = '主标签 ' + mains.length + ' 个，成功下钻 ' + drilled + ' 个，共 ' + out.length + ' 行';
+    if (!drilled) {
+      var fb = await scanSection(title);
+      if (fb.length) { out = fb; lastBrowsingTabs = '下钻失败，退回单层扫描'; }
+    }
+    return out;
+  }
+
   // ---------- 组装 ----------
 
   function keyword() {
@@ -332,14 +553,19 @@
     } catch (e) { /* 忽略 */ }
   }
 
+  // 单个区块的行数：数组=平铺区块；对象=带页签的区块（值为各页签的行数组）。
+  function rowCount(d) {
+    if (!d) return 0;
+    if (Array.isArray(d)) return d.length;
+    var n = 0, tabs = Object.keys(d);
+    for (var t = 0; t < tabs.length; t++) n += d[tabs[t]].length;
+    return n;
+  }
+
   function countRows(sections) {
     var n = 0;
     var keys = Object.keys(sections);
-    for (var i = 0; i < keys.length; i++) {
-      var d = sections[keys[i]];
-      if (Array.isArray(d)) n += d.length;
-      else { var tabs = Object.keys(d); for (var t = 0; t < tabs.length; t++) n += d[tabs[t]].length; }
-    }
+    for (var i = 0; i < keys.length; i++) n += rowCount(sections[keys[i]]);
     return n;
   }
 
@@ -366,16 +592,20 @@
     var debug = {
       titleMarks: marks.map(function (m) { return { title: m.t, top: Math.round(m.top) }; }),
       charts: debugSections,
-      genderText: ''
+      genderText: '',
+      browsingTabs: ''
     };
     // 回给用户一句人话；详细映射（标题命中位置/图表归属）只留在 debug 快照里，供「诊断」查看。
     bridge('onLog', '已定位 ' + marks.length + ' 个区块、' + charts.length + ' 个图表，开始解析…');
 
     sections['年龄分布'] = await scanCanvas(findChartIn(charts, '年龄分布'));
-    sections['用户内容浏览分布'] = await scanCanvas(findChartIn(charts, '用户内容浏览分布'));
+    // 用户内容浏览分布是「主标签 → 子标签」两级结构，需逐级点开采集；
+    // 放在年龄之后、地域之前：地域会切自己的页签重渲染，必须留在最后。
+    sections['用户内容浏览分布'] = await extractBrowsing();
     sections['性别分布'] = extractGender();
     sections['地域分布'] = await extractRegion();
     debug.genderText = lastGenderBoxText;
+    debug.browsingTabs = lastBrowsingTabs;
 
     var csv = buildCsv(sections);
     return {
@@ -389,7 +619,7 @@
         region: (sections['地域分布'] && Object.keys(sections['地域分布']).length) || 0,
         age: sections['年龄分布'].length,
         gender: sections['性别分布'].length,
-        interest: sections['用户内容浏览分布'].length
+        interest: rowCount(sections['用户内容浏览分布'])
       },
       rowCount: countRows(sections),
       csv: csv

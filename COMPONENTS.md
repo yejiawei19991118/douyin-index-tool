@@ -74,13 +74,14 @@
 | --- | --- | --- |
 | 配置 | `TITLES`、`REGION_TABS` | 四个区块名；地域维度优先级 **城市 → 城市级别 → 省份** |
 | 基础工具 | `sleep()`、`bridge()` | 延时；统一封装 `window.DyBridge` 回传 |
-| 区块定位 | `findTitleMarks()`、`sectionFor()`、`getCharts()`、`findChartIn()` | TreeWalker 扫纯文本节点定位标题；按垂直 + 水平距离判定图表归属；收集图表容器与 tooltip 兄弟节点 |
+| 区块定位 | `findTitleMarks()`、`sectionFor()`、`getCharts()`、`findChartIn()`、`sectionRoot()` | TreeWalker 扫纯文本节点定位标题；按垂直 + 水平距离判定图表归属；收集图表容器与 tooltip 兄弟节点；`sectionRoot` 取含 canvas 的最低祖先 |
 | canvas 采集 | `parseTip()`、`scanCanvas()` | 解析 tooltip 的「占比 / TGI」；多行 y × x 步进派发合成 mousemove 逼出 tooltip |
 | 地域采集 | `parseRegionTable()`、`clickTab()`、`extractRegion()` | 解析 DOM 表格；切换子维度页签；按维度优先级编排采集 |
 | 性别采集 | `nearestCommon()`、`extractGender()` | 取「男性 / 女性」标签的最小公共祖先容器隔离解析；紧邻正则避免命中介绍文案 |
+| 兴趣下钻采集 | `browsingChart()`、`chartStale()`、`drillHost()`、`backButton()`、`clickChart()`、`sweepBars()`、`extractBrowsing()` | 「用户内容浏览分布」实为**柱状图**：单行扫 x 读出全部主标签 → 逐个点击柱体下钻（点击 y 取 0.80，落在柱体上）→ 扫子层 → 点「返回上一级」回主层；子标签名为「主标签_子标签」，输出 `时尚` / `时尚_穿搭` 平铺行 |
 | 输出 | `keyword()`、`csvEscape()`、`buildCsv()` | 读取地址栏关键词；CSV 转义；按区块 + 维度组装 CSV |
 | 流程编排 | `scrollThrough()`、`countRows()`、`extractAll()` | 整页滚动逼出懒加载图表；统计行数；按「年龄 → 兴趣 → 性别 → 地域」顺序采集（地域放最后，避免切页签重渲染影响其它图表） |
-| 诊断快照 | `debug`（随结果回传） | 标题命中位置、图表归属、性别容器原文，供「诊断」按钮排查 |
+| 诊断快照 | `debug`（随结果回传） | 标题命中位置、图表归属、性别容器原文、兴趣下钻概况（主标签数 / 成功下钻数 / 行数），供「诊断」按钮排查 |
 | 触发组件 | `window.__dyRun()`、`watch()` | 手动触发；页面就绪后 1.5s 自动触发一次 |
 
 ---
