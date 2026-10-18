@@ -9,16 +9,17 @@
 
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
-| 配置常量 | `DEFAULT_KEYWORD`、`ANALYSIS_URL`、`targetUrl(kw)`、`DESKTOP_UA` | 默认关键词「穿搭」；按关键词动态拼址并做 URL 编码；桌面版 Chrome UA（人群分析为桌面端页面，需桌面 UA 才能拿到四个区块） |
+| 配置常量 | `DEFAULT_KEYWORD`、`DESKTOP_UA` | 默认关键词「穿搭」；桌面版 Chrome UA（人群分析为桌面端页面，需桌面 UA 才能拿到四个区块）。目标地址构造见 `AppUrls` |
 | 布局骨架 | `onCreate` | 纵向三段：顶部输入栏 / WebView / 底部控制区 |
 | 关键词输入组件 | `keywordInput`、`openBtn` | EditText（预填 + 圆角底）+「打开」按钮，支持软键盘回车触发 |
+| 更新入口 | `updateBtn` | 顶栏「更新」按钮 → 手动检查新版本（启动时另有静默自动检查，见「内置版本更新」） |
 | 网页承载组件 | `webView` + `WebSettings` | JS / DOM 存储 / 数据库 / 宽视口 / 概览模式 / 桌面 UA / 混合内容兼容 |
 | 登录态组件 | `CookieManager`、`onResume`、`onPause`、`onPageFinished` | 接受第三方 Cookie；在页面加载完成、回前台、切后台三处 `flush()` 落盘，实现免重复扫码 |
 | 导航与进度 | `WebViewClient.onPageFinished`、`onProgressChanged`、`onConsoleMessage` | 页面完成即注入脚本；加载百分比可视化；页面 JS 报错转 logcat（tag `DyIndexJS`） |
 | 状态栏组件 | `statusView`、`setStatus()` | 单行 + 省略号，汇报加载进度 / 空数据 / 抓取结果 |
 | 操作按钮组 | `runBtn`、`copyBtn`、`exportBtn`、`debugBtn` | 重新抓取 / 复制 / 导出 CSV / 诊断，四个按钮等宽排布 |
 | 注入与保活 | `injectExtractor()`、`pollReinject` | 注入 assets 脚本；每 2.5s 轮询补注入，应对 SPA 路由重置导致脚本丢失 |
-| 数据导出 | `exportCsv()`、`writeToDownloads()`、`findDownloadsFile()` | MediaStore 写入系统「下载」目录，带 UTF-8 BOM；同名文件复用 Uri 覆盖写入，不产生重复文件 |
+| 数据导出 | `exportCsv()`、`writeToDownloads()`、`findDownloadsFile()` | MediaStore 写入系统「下载」目录，带 UTF-8 BOM；同名文件复用 Uri 覆盖写入，不产生重复文件；文件名规则见 `CsvUtils.fileNameFor` |
 | 剪贴板组件 | `copyCsv()`、`copyDebug()` | 复制 CSV；复制抓取诊断快照 |
 | UI 样式工具 | `bg()`、`actionButton()`、`hDivider()`、`addWeighted()`、`setCopyEnabled()`、`dp()` | 圆角背景 / 主次按钮样式 / 分割线 / 等宽排布 / 禁用态置灰 / dp 换算 |
 | 资源与生命周期 | `readAsset()`、`onKeyDown`、`onDestroy` | 读取 assets；返回键回溯历史；销毁时清理 WebView |
@@ -33,7 +34,41 @@
 
 ---
 
-## 二、页面注入脚本层 `app/src/main/assets/extract.js`
+## 二、纯逻辑工具类 `app/src/main/java/com/lmt/dyindex/`
+
+不依赖 Android 框架，可在 JVM 上直接单测（测试见 `app/src/test/java/com/lmt/dyindex/`）。
+
+| 组件 | 符号 | 职责 |
+| --- | --- | --- |
+| 目标地址构造 | `AppUrls.ANALYSIS_URL`、`AppUrls.targetUrl(kw)` | 由关键词拼出人群分析页地址，关键词做 URL 编码（中文 / 空格 / 特殊字符） |
+| 导出文件名 | `CsvUtils.sanitizeFileName(kw)`、`CsvUtils.fileNameFor(kw)` | 清洗文件名非法字符、空值兜底「关键词」；按关键词固定命名（同名覆盖，不堆重复文件） |
+| 版本号比较 | `VersionUtils.normalize / parseSegments / compare / isNewer` | 解析 `v1.2.3` 形态 tag（剥离前导 v 与 `-`/`+` 后缀），逐段按数值比较，段数不一致按 0 补 |
+
+### 单元测试
+
+| 测试类 | 覆盖点 |
+| --- | --- |
+| `AppUrlsTest` | 中文百分号编码、空格→加号、`&`/`=` 转义、固定查询参数保留、空关键词与 null |
+| `CsvUtilsTest` | 非法字符全替换、首尾空白、空/null 兜底、固定命名与完整后缀 |
+| `VersionUtilsTest` | 前导 v / 后缀剥离、段数不一致视为相等、1.10 &gt; 1.9、主版本优先、空版本最低 |
+
+---
+
+## 三、内置版本更新
+
+| 组件 | 符号 / 位置 | 职责 |
+| --- | --- | --- |
+| 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 启动静默查（6h 节流）、`manual=true` 用户点「更新」（无视节流并回提示）；有新版才弹窗；私有仓库 404 给可读提示而非崩溃 |
+| 版本比对 | `Updater.parseRelease()` + `VersionUtils` | 取 `tag_name` 规整后与当前 `versionName` 比较；从 `assets` 挑 `.apk`（优先带 `release` 字样）与 `.apk.sha256` |
+| 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置）；下载到应用私有 `updates/` 目录；下载前清理遗留安装包 |
+| 校验与安装 | `Updater.handleIfFinished()` | 下载完成广播 / onResume 补装两路；SHA-256 摘要校验 → 签名兼容性比对 → 调起系统安装器；签名不一致时引导卸载重装 |
+| 安装包共享 | `ApkFileProvider`（authority `${applicationId}.apk`） | 自建极简 ContentProvider，以 content:// 只读形式把 APK 交给系统安装器（替代需要 androidx 的 FileProvider） |
+| 断点接续 | `Updater.resumePendingInstall()` + `SharedPreferences` | 进程若在下载期间被回收，onResume 依据持久化的下载 id 接续校验与安装 |
+| 清单声明 | `AndroidManifest.xml` | `REQUEST_INSTALL_PACKAGES` 权限 + `<provider>` 声明 |
+
+---
+
+## 四、页面注入脚本层 `app/src/main/assets/extract.js`
 
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
@@ -50,7 +85,7 @@
 
 ---
 
-## 三、构建与交付链
+## 五、构建与交付链
 
 | 组件 | 位置 | 职责 |
 | --- | --- | --- |
@@ -59,7 +94,8 @@
 | 混淆 keep 规则 | `app/proguard-rules.pro` | 保留 `@JavascriptInterface` 注解与方法、注入桥 `DyBridge` 全部成员，防日后开启混淆导致桥失效（当前 `minifyEnabled false`，规则为前置保险） |
 | 工程构建脚本 | `build.gradle`、`settings.gradle` | AGP 8.13.0、镜像仓库、模块声明 |
 | 密钥隔离 | `.gitignore` | 排除 `release.jks`、`keystore.properties`、`local.properties`、构建产物 |
-| 发布流水线 | `.github/workflows/release.yml` | 推送 `v*` 标签即触发：校验 Secrets → 还原签名文件 → `assembleRelease` → 产物校验 → 生成带版本号资产与 SHA256 → 发布 Release |
+| 单元测试闸门 | `.github/workflows/release.yml`「单元测试」步骤 | `assembleRelease` 之前先跑 `./gradlew test`，测试不过直接 fail，不产出也不发布 APK |
+| 发布流水线 | `.github/workflows/release.yml` | 推送 `v*` 标签即触发：校验 Secrets → 还原签名文件 → **单元测试** → `assembleRelease` → 产物校验 → 生成带版本号资产与 SHA256 → 发布 Release |
 
 ### 版本发布流程
 
@@ -72,10 +108,11 @@
 1. 校验签名 Secrets 是否齐全（缺失即失败，不白跑构建）
 2. 由 Secrets 还原 `release.jks` 与 `keystore.properties`（仅存在于本次 runner，用完销毁）
 3. 将 Gradle 分发包从国内镜像切到官方源（境外 runner 拉取更稳）
-4. `./gradlew assembleRelease`
-5. **产物校验**：文件存在 → `apksigner verify` 签名校验（未签名直接中止发布）→ 确认包内含 `assets/extract.js`
-6. 生成 `douyin-index-tool-<tag>-release.apk` 与同名 `.sha256`
-7. 发布 Release 并附带两个资产
+4. **`./gradlew test`**：单元测试不全绿即中止，绝不产出/发布半成品
+5. `./gradlew assembleRelease`
+6. **产物校验**：文件存在 → `apksigner verify` 签名校验（未签名直接中止发布）→ 确认包内含 `assets/extract.js`
+7. 生成 `douyin-index-tool-<tag>-release.apk` 与同名 `.sha256`
+8. 发布 Release 并附带两个资产
 
 ### 签名配置约定
 

@@ -42,8 +42,8 @@ android {
         applicationId "com.lmt.dyindex"
         minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName "1.1"
+        versionCode 3
+        versionName "1.2"
     }
 
     signingConfigs {
@@ -99,4 +99,6 @@ gradle.taskGraph.whenReady { graph ->
 
 dependencies {
     // 运行时零第三方依赖：仅框架 API。
+    // JUnit 只进测试编译期（testImplementation），不会打进 APK，不破坏零依赖约定。
+    testImplementation 'junit:junit:4.13.2'
 }

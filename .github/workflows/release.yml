@@ -75,6 +75,10 @@ jobs:
             gradle/wrapper/gradle-wrapper.properties
           grep distributionUrl gradle/wrapper/gradle-wrapper.properties
 
+      # 测试闸门：单元测试不过直接 fail，不进入构建，也就不会产出/发布 APK
+      - name: 单元测试
+        run: ./gradlew test --no-daemon --stacktrace
+
       - name: 构建 release APK
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 

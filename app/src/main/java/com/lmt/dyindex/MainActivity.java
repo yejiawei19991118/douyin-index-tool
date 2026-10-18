@@ -40,7 +40,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -56,18 +55,6 @@ public class MainActivity extends Activity {
 
     // 默认关键词：预填到输入框，直接点「打开」即可抓取。
     private static final String DEFAULT_KEYWORD = "穿搭";
-
-    private static final String ANALYSIS_URL =
-            "https://creator.douyin.com/creator-micro/creator-count/arithmetic-index/analysis";
-
-    // 由关键词动态拼出人群分析页地址；关键词需做 URL 编码（中文/空格等）。
-    private String targetUrl(String kw) {
-        String enc;
-        try { enc = URLEncoder.encode(kw, "UTF-8"); }
-        catch (Exception e) { enc = kw; }
-        return ANALYSIS_URL
-                + "?keyword=" + enc + "&tab=crowd&appName=aweme&source=creator";
-    }
 
     // 桌面版 Chrome UA：人群分析是桌面端页面，用桌面 UA 才能拿到与网页版一致的四个人群区块。
     private static final String DESKTOP_UA =
@@ -127,6 +114,15 @@ public class MainActivity extends Activity {
             public void onClick(View v) { openKeyword(); }
         });
         top.addView(openBtn, new LinearLayout.LayoutParams(dp(82), fieldH));
+
+        // 手动检查新版本（启动时也会静默查一次，这里用于「更新」入口常驻可点）。
+        Button updateBtn = actionButton("更新", false, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { Updater.checkAndPrompt(MainActivity.this, true); }
+        });
+        LinearLayout.LayoutParams ulp = new LinearLayout.LayoutParams(dp(64), fieldH);
+        ulp.leftMargin = dp(8);
+        top.addView(updateBtn, ulp);
 
         keywordInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
@@ -260,10 +256,13 @@ public class MainActivity extends Activity {
 
         webView.addJavascriptInterface(new DyBridge(), "DyBridge");
         keywordCache = DEFAULT_KEYWORD;
-        webView.loadUrl(targetUrl(DEFAULT_KEYWORD));
+        webView.loadUrl(AppUrls.targetUrl(DEFAULT_KEYWORD));
 
         // 页面为 SPA，路由切换不触发 onPageFinished；轮询兜底：脚本丢失则重新注入。
         ui.post(pollReinject);
+
+        // 启动时静默检查一次新版本（有更新才弹窗，失败不打扰）。
+        Updater.checkAndPrompt(this, false);
     }
 
     // 按输入框里的关键词重新加载人群分析页；清空上一轮结果，避免误导出旧数据。
@@ -275,7 +274,7 @@ public class MainActivity extends Activity {
         lastRowCount = 0;
         setCopyEnabled(false);
         setStatus("正在加载「" + kw + "」的人群分析…");
-        webView.loadUrl(targetUrl(kw));
+        webView.loadUrl(AppUrls.targetUrl(kw));
     }
 
     // 圆角纯色背景（stroke 为 0 表示不描边）；用于替换主题默认的方框/下划线外观。
@@ -383,7 +382,7 @@ public class MainActivity extends Activity {
         if (csv == null || csv.isEmpty()) { toast("还没有可导出的结果"); return; }
         // 文件名按关键词固定、不带时间戳：同名覆盖，反复抓取（含每次启动的自动抓取）
         // 只会保留「每个关键词一份最新结果」，不会在下载目录里堆一串重复文件。
-        String name = "抖音指数_" + safeKeyword() + "_人群分析.csv";
+        String name = CsvUtils.fileNameFor(keywordCache);
         try {
             String desc = writeToDownloads(name, csv);
             toast("已导出到" + desc + "：" + name);
@@ -393,10 +392,6 @@ public class MainActivity extends Activity {
     }
 
     private String keywordCache = "";
-
-    private String safeKeyword() {
-        return keywordCache == null || keywordCache.isEmpty() ? "关键词" : keywordCache.replaceAll("[\\\\/:*?\"<>|]", "_");
-    }
 
     // Android 10(Q) 起走 MediaStore（免运行时权限，落在系统「下载」目录）；
     // 更低版本退回应用专属目录（同样免权限）。
@@ -531,6 +526,8 @@ public class MainActivity extends Activity {
         super.onResume();
         // 回到前台时刷新 Cookie 库，保证启动/恢复时读到的登录态是最新的。
         CookieManager.getInstance().flush();
+        // 上一次更新下载若已结束（进程曾被杀导致完成广播丢失），这里补上安装。
+        Updater.resumePendingInstall(this);
     }
 
     @Override
