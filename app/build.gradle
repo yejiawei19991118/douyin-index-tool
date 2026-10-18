@@ -4,12 +4,35 @@ plugins {
     id 'com.android.application'
 }
 
-// release 签名信息来自根目录 keystore.properties（与 keystore 一起保管，不进版本库）。
-def keystoreProps = new Properties()
+// ===== release 签名配置 =====
+// 签名信息来自根目录 keystore.properties（与 keystore 文件一起保管，均被 .gitignore 排除）。
 def keystorePropsFile = rootProject.file('keystore.properties')
-if (keystorePropsFile.exists()) {
+def keystoreProps = new Properties()
+def hasKeystoreProps = keystorePropsFile.exists()
+if (hasKeystoreProps) {
     keystorePropsFile.withInputStream { keystoreProps.load(it) }
 }
+
+def REQUIRED_KEYS = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']
+def missingKeys = REQUIRED_KEYS.findAll {
+    !keystoreProps[it]?.toString()?.trim()
+}
+
+def SIGNING_HINT = '''
+————————————————————————————————————————————————————————————
+release 签名配置缺失，已中止构建（避免产出未签名的 APK）。
+
+需要工程根目录下的两个文件（二者均被 .gitignore 排除，不进版本库）：
+  1) keystore.properties —— 含 4 项：storeFile / storePassword / keyAlias / keyPassword
+  2) storeFile 指向的 keystore 文件（如 release.jks）
+
+本机：从安全位置恢复上述两个文件后重试。
+CI  ：在仓库 Settings → Secrets and variables → Actions 配置
+      SIGNING_KEYSTORE_BASE64 / SIGNING_STORE_PASSWORD /
+      SIGNING_KEY_ALIAS / SIGNING_KEY_PASSWORD，
+      workflow 会还原为这两个文件（见 .github/workflows/release.yml）。
+————————————————————————————————————————————————————————————
+'''
 
 android {
     namespace 'com.lmt.dyindex'
@@ -19,13 +42,13 @@ android {
         applicationId "com.lmt.dyindex"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.1"
     }
 
     signingConfigs {
         release {
-            if (keystorePropsFile.exists()) {
+            if (hasKeystoreProps && missingKeys.isEmpty()) {
                 storeFile rootProject.file(keystoreProps['storeFile'])
                 storePassword keystoreProps['storePassword']
                 keyAlias keystoreProps['keyAlias']
@@ -37,8 +60,11 @@ android {
     buildTypes {
         release {
             // 用 release keystore 签名，产物可直接安装并支持后续同签名覆盖升级。
-            signingConfig signingConfigs.release
-            // 纯 WebView 外壳，无需混淆。
+            // 缺配置时不绑定签名，由下方 taskGraph 检查直接中止构建。
+            if (hasKeystoreProps && missingKeys.isEmpty()) {
+                signingConfig signingConfigs.release
+            }
+            // WebView 外壳无需混淆；proguard-rules.pro 中的 keep 规则是「日后开启混淆」的前置保险。
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -47,6 +73,27 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+// 请求 release 产物但签名配置不全时立即失败，给出可操作的提示，
+// 而不是静默产出一个未签名、无法覆盖安装的 APK。
+// 注意：只在 release 构建时校验，debug 构建不受影响（便于无密钥的机器直接编译调试）。
+gradle.taskGraph.whenReady { graph ->
+    boolean wantsRelease = graph.allTasks.any { t ->
+        t.project == project && (t.name ==~ /(assemble|bundle|package).*Release.*/)
+    }
+    if (!wantsRelease) return
+
+    if (!hasKeystoreProps) {
+        throw new GradleException(SIGNING_HINT)
+    }
+    if (!missingKeys.isEmpty()) {
+        throw new GradleException("keystore.properties 缺少字段：" + missingKeys.join('、') + SIGNING_HINT)
+    }
+    def ksFile = rootProject.file(keystoreProps['storeFile'])
+    if (!ksFile.exists()) {
+        throw new GradleException("keystore 文件不存在：" + ksFile.absolutePath + SIGNING_HINT)
     }
 }
 

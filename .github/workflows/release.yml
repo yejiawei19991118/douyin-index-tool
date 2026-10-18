@@ -1,0 +1,123 @@
+name: Release
+
+# 推送 v* 标签即触发：自动构建 release 包 → 校验 → 发布 Release。
+# 从此版本交付不再依赖本机手动命令链。
+on:
+  push:
+    tags:
+      - 'v*'
+
+# 创建 Release / 上传资产需要写权限
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 构建并发布 release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # 先确认签名 Secrets 齐全，避免白跑一轮构建后才失败
+      - name: 校验签名 Secrets
+        env:
+          KS_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          KS_STORE_PWD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KS_KEY_PWD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          missing=""
+          if [ -z "$KS_B64" ];       then missing="$missing SIGNING_KEYSTORE_BASE64"; fi
+          if [ -z "$KS_STORE_PWD" ]; then missing="$missing SIGNING_STORE_PASSWORD"; fi
+          if [ -z "$KS_ALIAS" ];     then missing="$missing SIGNING_KEY_ALIAS"; fi
+          if [ -z "$KS_KEY_PWD" ];   then missing="$missing SIGNING_KEY_PASSWORD"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::缺少必需的 Secrets:$missing。请在 Settings → Secrets and variables → Actions 配置后再发布。"
+            exit 1
+          fi
+          echo "签名 Secrets 齐全。"
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 准备 Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 私钥只存在于本次 runner 的工作目录，用完随 runner 销毁；绝不进版本库
+      - name: 由 Secrets 还原签名文件
+        env:
+          KS_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          KS_STORE_PWD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KS_KEY_PWD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          echo "$KS_B64" | base64 -d > release.jks
+          test -s release.jks
+          cat > keystore.properties <<EOF
+          storeFile=release.jks
+          storePassword=$KS_STORE_PWD
+          keyAlias=$KS_ALIAS
+          keyPassword=$KS_KEY_PWD
+          EOF
+          chmod 600 release.jks keystore.properties
+          echo "签名文件已就绪。"
+
+      # 工程内默认指向国内镜像（本机构建更快），境外 runner 拉取可能很慢甚至失败
+      - name: 将 Gradle 分发包切到官方源
+        run: |
+          sed -i 's#mirrors\.cloud\.tencent\.com/gradle#services.gradle.org/distributions#g' \
+            gradle/wrapper/gradle-wrapper.properties
+          grep distributionUrl gradle/wrapper/gradle-wrapper.properties
+
+      - name: 构建 release APK
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      # 签名前置校验：未签名或校验失败一律中止，绝不发布
+      - name: 产物校验（存在性 / 签名 / 注入脚本）
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          [ -f "$APK" ] || { echo "::error::未找到构建产物 $APK"; exit 1; }
+          echo "APK 大小：$(stat -c%s "$APK") 字节"
+
+          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name apksigner -type f | sort -V | tail -1)
+          [ -n "$APKSIGNER" ] || { echo "::error::未找到 apksigner"; exit 1; }
+          echo "使用 $APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee signer.txt
+          if ! grep -q "Signer #1 certificate SHA-256 digest" signer.txt; then
+            echo "::error::APK 未签名或签名校验失败，已中止发布"
+            exit 1
+          fi
+
+          # 抓取脚本必须打进包内，否则装上也采不到数据
+          unzip -l "$APK" | grep -q "assets/extract.js" \
+            || { echo "::error::APK 内缺少 assets/extract.js"; exit 1; }
+          echo "产物校验通过。"
+
+      - name: 生成带版本号的资产与 SHA256
+        id: pack
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          OUT="douyin-index-tool-${VERSION}-release.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$OUT"
+          sha256sum "$OUT" > "${OUT}.sha256"
+          echo "资产名：$OUT"
+          cat "${OUT}.sha256"
+          echo "asset=$OUT"                >> "$GITHUB_OUTPUT"
+          echo "sha_file=${OUT}.sha256"    >> "$GITHUB_OUTPUT"
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.pack.outputs.asset }}
+            ${{ steps.pack.outputs.sha_file }}

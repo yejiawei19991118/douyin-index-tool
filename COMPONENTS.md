@@ -55,15 +55,31 @@
 | 组件 | 位置 | 职责 |
 | --- | --- | --- |
 | 模块构建脚本 | `app/build.gradle` | release 签名绑定、版本号、compileSdk 34 / minSdk 26 / targetSdk 34 |
+| 签名前置校验 | `app/build.gradle` 的 `gradle.taskGraph` 检查 | 请求 release 产物但 `keystore.properties`／字段／keystore 文件缺失时**立即失败并给出提示**，不静默产出未签名包；debug 构建不受影响 |
+| 混淆 keep 规则 | `app/proguard-rules.pro` | 保留 `@JavascriptInterface` 注解与方法、注入桥 `DyBridge` 全部成员，防日后开启混淆导致桥失效（当前 `minifyEnabled false`，规则为前置保险） |
 | 工程构建脚本 | `build.gradle`、`settings.gradle` | AGP 8.13.0、镜像仓库、模块声明 |
 | 密钥隔离 | `.gitignore` | 排除 `release.jks`、`keystore.properties`、`local.properties`、构建产物 |
+| 发布流水线 | `.github/workflows/release.yml` | 推送 `v*` 标签即触发：校验 Secrets → 还原签名文件 → `assembleRelease` → 产物校验 → 生成带版本号资产与 SHA256 → 发布 Release |
 
 ### 版本发布流程
 
 ```
-改代码 → gradlew assembleRelease → git commit → git tag vX.Y → gh release create vX.Y <apk>
+改代码 → 提交并推送 → git tag vX.Y && git push origin vX.Y
 ```
 
-- 版本交付**只走本仓库**，不再交付本机文件
-- APK 以 GitHub Releases 资产分发，资产名统一 ASCII（中文名上传会被截断）
-- `release.jks` 与 `keystore.properties` **绝不入库**：私钥一旦泄露，他人可伪造出被系统当作「正版升级」接受的 APK
+推送标签后由 CI 自动完成，**无需本机执行任何构建命令**：
+
+1. 校验签名 Secrets 是否齐全（缺失即失败，不白跑构建）
+2. 由 Secrets 还原 `release.jks` 与 `keystore.properties`（仅存在于本次 runner，用完销毁）
+3. 将 Gradle 分发包从国内镜像切到官方源（境外 runner 拉取更稳）
+4. `./gradlew assembleRelease`
+5. **产物校验**：文件存在 → `apksigner verify` 签名校验（未签名直接中止发布）→ 确认包内含 `assets/extract.js`
+6. 生成 `douyin-index-tool-<tag>-release.apk` 与同名 `.sha256`
+7. 发布 Release 并附带两个资产
+
+### 签名配置约定
+
+- **绝不入库**：`release.jks` 与 `keystore.properties` 均被 `.gitignore` 排除。私钥一旦泄露，他人可伪造出被系统当作「正版升级」接受的 APK
+- CI 通过仓库 Secrets 提供签名信息：`SIGNING_KEYSTORE_BASE64`（keystore 的 base64）、`SIGNING_STORE_PASSWORD`、`SIGNING_KEY_ALIAS`、`SIGNING_KEY_PASSWORD`
+- 本地缺少签名配置时 `assembleRelease` 会直接失败并给出提示；如需本地验证签名产物，需自行从安全位置恢复这两个文件
+- 同类工程若换 keystore，务必沿用同一份密钥，否则无法覆盖升级
