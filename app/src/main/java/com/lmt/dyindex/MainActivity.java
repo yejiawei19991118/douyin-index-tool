@@ -104,6 +104,28 @@ public class MainActivity extends Activity {
             "get:function(){return this.getAttribute('class')||'';}," +
             "set:function(v){this.setAttribute('class',v==null?'':String(v));}});" +
             "}catch(e){}})();";
+    // 抖音创作者中心是 SPA，入口 chunk 加载失败（如 ChunkLoadError: Loading chunk xxxx failed）
+    // 时，页面自身的错误边界会把路由跳走，导致一直停在「加载中」。实测这类失败是偶发的
+    // （CDN 抖动），刷新一次通常就能恢复。此脚本在页面 JS 之前注入：
+    //   1) 监听 error / unhandledrejection，命中 ChunkLoadError 立即 reload；
+    //   2) 兜底看门狗：body 长时间只含「加载中」短文本时也 reload；
+    //   3) 用 sessionStorage 记录上次 reload 时间戳，45s 内不重复 reload，避免死循环。
+    private static final String STUCK_PAGE_RECOVERY =
+            "(function(){if(window.__dyRec)return;window.__dyRec=true;" +
+            "var K='__dy_last_reload';" +
+            "function r(n){try{var t=Date.now(),l=parseInt(sessionStorage.getItem(K)||'0',10);" +
+            "if(t-l<45000)return;sessionStorage.setItem(K,String(t));" +
+            "console.log('[DyRecovery] '+n+', reloading');location.reload();}catch(e){}}" +
+            "window.addEventListener('error',function(e){var m=(e&&e.message)||'';" +
+            "if(/ChunkLoadError|Loading chunk|loadable/i.test(m))r('chunk-error');},true);" +
+            "window.addEventListener('unhandledrejection',function(e){" +
+            "var x=e&&e.reason,m=(x&&(x.message||String(x)))||'';" +
+            "if(/ChunkLoadError|Loading chunk|loadable/i.test(m))r('chunk-rejection');},true);" +
+            "var s=0;setInterval(function(){try{" +
+            "var b=(document.body&&document.body.innerText)||'';" +
+            "if(b.indexOf('加载中')>=0&&b.length<300){s+=2;if(s>=16)r('stuck-loading');}" +
+            "else{s=0;}}catch(e){}},2000);" +
+            "})();";
     private final Runnable loadTimeoutRunnable = new Runnable() {
         @Override
         public void run() {
@@ -301,6 +323,8 @@ public class MainActivity extends Activity {
                 setStatus("正在加载" + (host.isEmpty() ? "" : " " + host) + "…");
                 // 在页面 JS 执行前注入兼容补丁，修复 SVGElement.className 导致的渲染卡死。
                 view.evaluateJavascript(SVG_CLASSNAME_POLYFILL, null);
+                // 注入「chunk 加载失败 / 卡死自动 reload」恢复脚本，同样需早于页面自身 JS。
+                view.evaluateJavascript(STUCK_PAGE_RECOVERY, null);
             }
 
             @Override
