@@ -1,6 +1,12 @@
 /*
  * 抖音指数「人群分析」自动提取脚本（注入到 creator.douyin.com 页面内运行）。
  *
+ * 支持四种页型（detectPage 按 URL 识别）：
+ *   关键词 /analysis?keyword=… 、话题 /analysis?topic=…（结构相同：地域/年龄/性别/内容浏览）
+ *   达人   /daren/detail?uid=…（粉丝分析：地域/年龄/性别/手机品牌/手机价格，无内容浏览）
+ *   视频   /videoanalysis?id=…（观众分析：地域/年龄/性别/内容浏览）
+ * 区块按页面实际存在探测，不硬编码清单；缺失区块自动跳过。
+ *
  * 数据来源分两类：
  *   1) DOM 文本：地域「省份/城市级别/城市」表格、性别分布
  *   2) canvas 图表：图表用 canvas 绘制，具体数值只在鼠标悬停 tooltip 里出现，
@@ -13,7 +19,7 @@
   if (window.__dyInjected) return;
   window.__dyInjected = true;
 
-  var TITLES = ['地域分布', '年龄分布', '性别分布', '用户内容浏览分布'];
+  var TITLES = ['地域分布', '年龄分布', '性别分布', '用户内容浏览分布', '手机品牌分布', '手机价格分布'];
   // 地域维度以「城市」为主：先切到城市再依次抓，结果对象按此顺序插入，
   // buildCsv 里 Object.keys 也就会让 CSV 先输出「城市」再「城市级别」「省份」。
   var REGION_TABS = ['城市', '城市级别', '省份'];
@@ -124,6 +130,9 @@
     if (m) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
     m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%TGI(\d+(?:\.\d+)?)/);
     if (m) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
+    // 手机分布等图表的 tooltip 可能没有 TGI：只有占比的形态也收（TGI 留空）。
+    m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%$/);
+    if (m) return { name: m[1], ratio: m[2] + '%', tgi: '' };
     return null;
   }
 
@@ -214,6 +223,49 @@
       if (rows2.length) result['当前视图'] = rows2;
     }
     return result;
+  }
+
+  // ---------- 通用区块（手机品牌 / 手机价格等）----------
+
+  function hasTitle(marks, name) {
+    for (var i = 0; i < marks.length; i++) if (marks[i].t === name) return true;
+    return false;
+  }
+
+  // 只含 DOM 表格（无 canvas）的区块兜底：从标题向上找「文本里含 排名 + TGI 表头」的
+  // 最近容器，只在该容器内按四列结构解析，避免把其它区块的数字行串进来。
+  function parseTableNear(title) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node, label = null;
+    while ((node = walker.nextNode())) {
+      var s = (node.nodeValue || '').replace(/\s+/g, '');
+      if (!s || s.length > 20) continue;
+      if (s.indexOf(title) >= 0 && node.parentElement) { label = node.parentElement; break; }
+    }
+    if (!label) return [];
+    var cur = label, depth = 0;
+    while (cur && cur !== document.body && depth < 10) {
+      var txt = cur.innerText || '';
+      if (txt.indexOf('排名') >= 0 && txt.indexOf('TGI') >= 0) {
+        var rows = parseRegionTable(txt.split('\n'));
+        if (rows.length) return rows;
+      }
+      cur = cur.parentElement;
+      depth++;
+    }
+    return [];
+  }
+
+  // 手机分布区块：优先 canvas 扫描（与年龄分布同一渲染组件），空则退 DOM 表格；
+  // 标题不在场（非达人页）直接返回空，不浪费扫描时间。
+  async function extractGeneric(charts, marks, title) {
+    var chart = findChartIn(charts, title);
+    if (chart) {
+      var pts = await scanCanvas(chart);
+      if (pts.length) return pts;
+    }
+    if (!hasTitle(marks, title)) return [];
+    return parseTableNear(title);
   }
 
   // ---------- 性别分布 ----------
@@ -504,11 +556,76 @@
 
   // ---------- 组装 ----------
 
-  function keyword() {
+  // ---------- 页型识别与页名 ----------
+
+  // 按 URL 识别页型：keyword / topic / daren / video / unknown。
+  function detectPage() {
     try {
-      var v = new URL(location.href).searchParams.get('keyword');
-      return v ? decodeURIComponent(v) : '';
-    } catch (e) { return ''; }
+      var u = new URL(location.href);
+      var p = u.pathname || '';
+      if (p.indexOf('/daren/detail') >= 0) return 'daren';
+      if (p.indexOf('/videoanalysis') >= 0) return 'video';
+      if (p.indexOf('/analysis') >= 0) return u.searchParams.get('topic') ? 'topic' : 'keyword';
+    } catch (e) { /* 忽略 */ }
+    return 'unknown';
+  }
+
+  function pageLabel(page) {
+    return { keyword: '关键词', topic: '话题', daren: '达人', video: '视频' }[page] || '未知页型';
+  }
+
+  // 达人昵称 / 视频标题在 URL 里没有，按「顶部区域内的短文本叶子」猜测：
+  // 黑名单滤掉页签/指标/按钮文案，含标点或纯数字的行也排除。猜不中返回空串，
+  // 原生侧会继续沿用用户输入框里的词（抖音号 / 搜索词），保证文件名可读。
+  function guessDisplayName(blacklist, minLen, maxLen, maxTop) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      var s = (node.nodeValue || '').trim();
+      if (s.length < minLen || s.length > maxLen) continue;
+      if (/^\d+$/.test(s) || /[%：:，,。.、/\\]/.test(s)) continue;
+      var bad = false;
+      for (var i = 0; i < blacklist.length; i++) {
+        if (s.indexOf(blacklist[i]) >= 0) { bad = true; break; }
+      }
+      if (bad) continue;
+      var el = node.parentElement;
+      if (!el) continue;
+      var r;
+      try { r = el.getBoundingClientRect(); } catch (e) { continue; }
+      if (!r || r.width <= 0 || r.top < 0 || r.top > maxTop) continue;
+      return s;
+    }
+    return '';
+  }
+
+  var DAREN_BLACKLIST = ['达人', '分析', '粉丝', '关注', '获赞', '抖音号', 'IP', '属地', '指数',
+    '合作', '授权', '私信', '作品', '直播', '店铺', '更多', '暂无', '查看', '登录'];
+  var VIDEO_BLACKLIST = ['视频', '指数', '对比', '观众', '分析', '播放', '点赞', '评论', '分享',
+    '完播', '抖音', '时长', '发布', '返回', '下载', '更多', '登录'];
+
+  // 结果里的「页名」：CSV 文件名与综合排名标题都以此为准。
+  function pageName(page) {
+    try {
+      var u = new URL(location.href);
+      if (page === 'keyword') {
+        var k = u.searchParams.get('keyword');
+        return k ? decodeURIComponent(k) : '';
+      }
+      if (page === 'topic') {
+        var t = u.searchParams.get('topic');
+        return t ? decodeURIComponent(t) : '';
+      }
+      if (page === 'daren') {
+        return guessDisplayName(DAREN_BLACKLIST, 1, 30, 600);
+      }
+      if (page === 'video') {
+        var guess = guessDisplayName(VIDEO_BLACKLIST, 6, 80, 900);
+        var id = u.searchParams.get('id');
+        return guess || (id ? '视频' + id : '');
+      }
+    } catch (e) { /* 忽略 */ }
+    return '';
   }
 
   function csvEscape(s) {
@@ -518,7 +635,10 @@
 
   function buildCsv(sections) {
     var lines = ['区块,分类,占比,TGI'];
-    var order = ['地域分布', '年龄分布', '性别分布', '用户内容浏览分布'];
+    var order = ['地域分布', '年龄分布', '性别分布', '用户内容浏览分布', '手机品牌分布', '手机价格分布'];
+    // 固定顺序之外若还有区块（未来新增），追加在最后，避免静默丢数据。
+    var keys = Object.keys(sections);
+    for (var k = 0; k < keys.length; k++) if (order.indexOf(keys[k]) < 0) order.push(keys[k]);
     for (var i = 0; i < order.length; i++) {
       var name = order[i];
       var data = sections[name];
@@ -571,9 +691,10 @@
 
   async function extractAll() {
     await scrollThrough();
+    var page = detectPage();
     var sections = {};
 
-    // 先做 canvas 图表（年龄 / 兴趣），再抓性别与地域；
+    // 先做 canvas 图表（年龄 / 手机分布 / 兴趣），再抓性别与地域；
     // 地域会切换子页签导致重渲染，放最后做，避免影响其它图表引用。
     // 诊断快照：把「脚本实际看到了什么」如实回传。识别失败时不必再猜，直接看这份快照即可
     // 定位是标题没匹配上、图表顺序不对，还是性别区块文本结构与预期不同。
@@ -590,18 +711,34 @@
       };
     });
     var debug = {
+      pageType: page,
       titleMarks: marks.map(function (m) { return { title: m.t, top: Math.round(m.top) }; }),
       charts: debugSections,
       genderText: '',
       browsingTabs: ''
     };
     // 回给用户一句人话；详细映射（标题命中位置/图表归属）只留在 debug 快照里，供「诊断」查看。
-    bridge('onLog', '已定位 ' + marks.length + ' 个区块、' + charts.length + ' 个图表，开始解析…');
+    bridge('onLog', '已定位 ' + marks.length + ' 个区块、' + charts.length
+        + ' 个图表（' + pageLabel(page) + '页），开始解析…');
 
-    sections['年龄分布'] = await scanCanvas(findChartIn(charts, '年龄分布'));
+    // 年龄分布：canvas 图表，各页型通用；图表不存在则记空。
+    var ageChart = findChartIn(charts, '年龄分布');
+    sections['年龄分布'] = ageChart ? await scanCanvas(ageChart) : [];
+
+    // 手机品牌 / 价格分布：仅达人粉丝分析页有；标题不在场即跳过。
+    sections['手机品牌分布'] = await extractGeneric(charts, marks, '手机品牌分布');
+    sections['手机价格分布'] = await extractGeneric(charts, marks, '手机价格分布');
+
     // 用户内容浏览分布是「主标签 → 子标签」两级结构，需逐级点开采集；
+    // 达人页没有该区块（标题不在场即跳过），关键词/话题/视频页均有。
     // 放在年龄之后、地域之前：地域会切自己的页签重渲染，必须留在最后。
-    sections['用户内容浏览分布'] = await extractBrowsing();
+    if (page !== 'daren'
+        && (hasTitle(marks, '用户内容浏览分布') || findChartIn(charts, '用户内容浏览分布'))) {
+      sections['用户内容浏览分布'] = await extractBrowsing();
+    } else {
+      sections['用户内容浏览分布'] = [];
+    }
+
     sections['性别分布'] = extractGender();
     sections['地域分布'] = await extractRegion();
     debug.genderText = lastGenderBoxText;
@@ -610,16 +747,19 @@
     var csv = buildCsv(sections);
     return {
       ok: countRows(sections) > 0,
-      keyword: keyword(),
+      pageType: page,
+      keyword: pageName(page),
       generatedAt: new Date().toISOString(),
       chartCount: charts.length,
       debugSections: debugSections,
       debug: debug,
       counts: {
         region: (sections['地域分布'] && Object.keys(sections['地域分布']).length) || 0,
-        age: sections['年龄分布'].length,
-        gender: sections['性别分布'].length,
-        interest: rowCount(sections['用户内容浏览分布'])
+        age: rowCount(sections['年龄分布']),
+        gender: rowCount(sections['性别分布']),
+        interest: rowCount(sections['用户内容浏览分布']),
+        phoneBrand: rowCount(sections['手机品牌分布']),
+        phonePrice: rowCount(sections['手机价格分布'])
       },
       rowCount: countRows(sections),
       csv: csv
@@ -640,8 +780,12 @@
     }
   };
 
-  // watcher：页面出现「人群分析」相关区块且图表已渲染时，自动跑一次
+  // watcher：页面出现「人群分析」相关区块且图表已渲染时的处理。
+  // 关键词 / 话题分析页自动跑一次；达人 / 视频页需用户先手动切到粉丝/观众分析页签，
+  // 故只提示就绪，由底部「开始抓取」按钮手动触发，避免在用户还在浏览时自动跳走。
   (function watch() {
+    var page = detectPage();
+    var auto = (page !== 'daren' && page !== 'video');
     var ticks = 0;
     var timer = setInterval(function () {
       ticks++;
@@ -649,10 +793,19 @@
       try {
         var txt = document.body ? document.body.innerText : '';
         var hasCanvas = document.querySelectorAll('.lightcharts-container canvas').length > 0;
-        ready = hasCanvas && /地域分布|年龄分布|性别分布|用户内容浏览分布/.test(txt);
+        ready = hasCanvas && /地域分布|年龄分布|性别分布|用户内容浏览分布|手机品牌分布|手机价格分布/.test(txt);
       } catch (e) { ready = false; }
-      if (ready) { clearInterval(timer); setTimeout(function () { window.__dyRun(); }, 1500); }
-      else if (ticks > 300) { clearInterval(timer); bridge('onLog', '未检测到人群分析区块'); }
+      if (ready) {
+        clearInterval(timer);
+        if (auto) {
+          setTimeout(function () { window.__dyRun(); }, 1500);
+        } else {
+          bridge('onLog', '已检测到分析区块，点底部「开始抓取」提取数据');
+        }
+      } else if (ticks > 300) {
+        clearInterval(timer);
+        bridge('onLog', auto ? '未检测到人群分析区块' : '未检测到分析区块，请切换到对应分析页签');
+      }
     }, 1000);
   })();
 })();

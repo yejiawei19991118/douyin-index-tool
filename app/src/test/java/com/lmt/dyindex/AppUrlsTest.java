@@ -47,4 +47,32 @@ public class AppUrlsTest {
         assertTrue(AppUrls.targetUrl("").contains("keyword=&"));
         assertTrue(AppUrls.targetUrl(null).contains("keyword=&"));
     }
+
+    @Test
+    public void 达人搜索地址按抖音号构造() {
+        String url = AppUrls.darenSearchUrl("64672646637");
+        assertTrue(url.startsWith(AppUrls.DAREN_SEARCH_URL));
+        assertTrue(url.contains("?keyword=64672646637"));
+    }
+
+    @Test
+    public void 视频搜索地址参数为query且中文被编码() {
+        String url = AppUrls.videoSearchUrl("穿搭");
+        assertTrue(url.startsWith(AppUrls.VIDEO_SEARCH_URL));
+        assertTrue(url.contains("?query=%E7%A9%BF%E6%90%AD"));
+    }
+
+    @Test
+    public void 话题搜索地址参数为topic且特殊字符转义() {
+        String url = AppUrls.topicSearchUrl("a&b");
+        assertTrue(url.startsWith(AppUrls.TOPIC_SEARCH_URL));
+        assertTrue(url.contains("?topic=a%26b"));
+    }
+
+    @Test
+    public void 三个搜索地址空值不抛异常() {
+        assertTrue(AppUrls.darenSearchUrl(null).contains("?keyword="));
+        assertTrue(AppUrls.videoSearchUrl("").contains("?query="));
+        assertTrue(AppUrls.topicSearchUrl(null).contains("?topic="));
+    }
 }

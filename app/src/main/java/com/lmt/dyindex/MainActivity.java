@@ -57,7 +57,20 @@ public class MainActivity extends Activity {
     // 默认关键词：预填到输入框，直接点「打开」即可抓取。
     private static final String DEFAULT_KEYWORD = "穿搭";
 
-    // 桌面版 Chrome UA：人群分析是桌面端页面，用桌面 UA 才能拿到与网页版一致的四个人群区块。
+    // 抓取模式（输入框上方的 chips 单选）：决定「打开」跳转的页面与状态提示。
+    // 关键词直达分析页并自动抓取；达人/视频/话题先到搜索页，手动进详情切分析页签后再抓取。
+    private static final int MODE_KEYWORD = 0;
+    private static final int MODE_DAREN = 1;
+    private static final int MODE_VIDEO = 2;
+    private static final int MODE_TOPIC = 3;
+    private static final String[] MODE_LABELS = {"关键词", "达人", "视频", "话题"};
+    private static final String[] MODE_HINTS = {
+            "输入关键词，如：穿搭",
+            "输入抖音号，如：64672646637",
+            "输入视频关键词，如：穿搭",
+            "输入话题，如：穿搭"};
+
+    // 桌面版 Chrome UA：各分析页都是桌面端页面，用桌面 UA 才能拿到与网页版一致的全部区块。
     private static final String DESKTOP_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     + "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -74,6 +87,9 @@ public class MainActivity extends Activity {
     private volatile int lastRowCount;
     // 最近一次抓取的诊断快照（脚本实际看到的标题/图表/性别文本），出错时供排查。
     private volatile String lastDebug;
+    // 当前抓取模式（默认关键词）。
+    private int mode = MODE_KEYWORD;
+    private final Button[] modeChips = new Button[MODE_LABELS.length];
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -88,6 +104,26 @@ public class MainActivity extends Activity {
         final int gutter = dp(14);   // 左右统一留白
         final int barPad = dp(10);
         final int fieldH = dp(46);   // 输入框与主按钮的统一高度，保证触控面积
+
+        // ===== 模式切换 chips：关键词 / 达人 / 视频 / 话题（单选，默认关键词）=====
+        LinearLayout modes = new LinearLayout(this);
+        modes.setOrientation(LinearLayout.HORIZONTAL);
+        modes.setBackgroundColor(0xFFFFFFFF);
+        modes.setPadding(gutter, barPad, gutter, 0);
+        for (int i = 0; i < MODE_LABELS.length; i++) {
+            final int m = i;
+            Button chip = actionButton(MODE_LABELS[i], i == mode, new View.OnClickListener() {
+                @Override
+                public void onClick(View v) { setMode(m); }
+            });
+            chip.setTextSize(13);
+            modeChips[i] = chip;
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0, dp(34), 1f);
+            if (i > 0) clp.leftMargin = dp(8);
+            modes.addView(chip, clp);
+        }
+        root.addView(modes, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // ===== 顶部：关键词输入栏（白底 + 圆角输入框 + 主色「打开」按钮）=====
         LinearLayout top = new LinearLayout(this);
@@ -172,7 +208,7 @@ public class MainActivity extends Activity {
         rlp.topMargin = barPad;
         bottom.addView(row, rlp);
 
-        runBtn = actionButton("重新抓取", true, new View.OnClickListener() {
+        runBtn = actionButton("开始抓取", true, new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 setStatus("手动触发抓取…");
@@ -273,16 +309,53 @@ public class MainActivity extends Activity {
         Updater.checkAndPrompt(this, false);
     }
 
-    // 按输入框里的关键词重新加载人群分析页；清空上一轮结果，避免误导出旧数据。
+    // 切换抓取模式：更新 chips 选中态与输入框提示；不自动跳转，仍由「打开」触发。
+    private void setMode(int m) {
+        mode = m;
+        for (int i = 0; i < modeChips.length; i++) {
+            Button chip = modeChips[i];
+            if (chip == null) continue;
+            boolean on = (i == m);
+            chip.setBackground(bg(on ? 0xFF2F6DF6 : 0xFFFFFFFF, on ? 0 : 0xFFD6DBE1, 10));
+            chip.setTextColor(on ? 0xFFFFFFFF : 0xFF2F6DF6);
+        }
+        keywordInput.setHint(MODE_HINTS[m]);
+    }
+
+    // 按当前模式与输入内容加载页面；清空上一轮结果，避免误导出旧数据。
+    // 关键词直达分析页（watcher 自动抓取）；达人/视频/话题到搜索页，状态栏引导手动步骤。
     private void openKeyword() {
         String kw = keywordInput.getText().toString().trim();
-        if (kw.isEmpty()) { toast("请先输入关键词"); return; }
+        if (kw.isEmpty()) {
+            toast(mode == MODE_DAREN ? "请先输入抖音号" : "请先输入关键词");
+            return;
+        }
         keywordCache = kw;
         lastCsv = null;
         lastRowCount = 0;
         setCopyEnabled(false);
-        setStatus("正在加载「" + kw + "」的人群分析…");
-        webView.loadUrl(AppUrls.targetUrl(kw));
+        String url;
+        String hint;
+        switch (mode) {
+            case MODE_DAREN:
+                url = AppUrls.darenSearchUrl(kw);
+                hint = "已打开达人搜索：请进入「达人详情」并切到粉丝分析，再点「开始抓取」";
+                break;
+            case MODE_VIDEO:
+                url = AppUrls.videoSearchUrl(kw);
+                hint = "已打开视频搜索：请进入一个视频并切到观众分析，再点「开始抓取」";
+                break;
+            case MODE_TOPIC:
+                url = AppUrls.topicSearchUrl(kw);
+                hint = "已打开话题搜索：请进入「话题分析」并切到人群分析，再点「开始抓取」";
+                break;
+            default:
+                url = AppUrls.targetUrl(kw);
+                hint = "正在加载「" + kw + "」的人群分析…";
+                break;
+        }
+        setStatus(hint);
+        webView.loadUrl(url);
     }
 
     // 圆角纯色背景（stroke 为 0 表示不描边）；用于替换主题默认的方框/下划线外观。
