@@ -158,8 +158,8 @@ public class MainActivity extends Activity {
                             "b.indexOf('关键词指数')>=0||b.indexOf('关联分析')>=0||" +
                             "b.indexOf('视频搜索结果')>=0||b.indexOf('粉丝分析')>=0||" +
                             "b.indexOf('话题分析')>=0;" +
-                            "return JSON.stringify({loading:l,hasContent:c,len:b.length});}" +
-                            "catch(e){return JSON.stringify({err:String(e)});}})()",
+                            "return {loading:l,hasContent:c,len:b.length};}" +
+                            "catch(e){return {err:String(e)};}})()",
                     value -> {
                         if (value == null) return;
                         try {
