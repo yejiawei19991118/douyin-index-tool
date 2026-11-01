@@ -94,6 +94,16 @@ public class MainActivity extends Activity {
     private final Button[] modeChips = new Button[MODE_LABELS.length];
     // 页面加载超时（30s 仍未 onPageFinished 则提示，避免「一直加载中」无反馈）。
     private static final long LOAD_TIMEOUT_MS = 30000L;
+    // 兼容补丁：抖音页面代码对 SVG 元素调用 e.className.includes()，但 SVGElement.className
+    // 返回的是 SVGAnimatedString（无 .includes），在桌面 UA + 触屏 WebView 的组合下会触发，
+    // 导致页面渲染管线抛错、卡在「加载中」。此 polyfill 让 className 返回字符串，需在页面 JS
+    // 之前注入（onPageStarted 阶段）。
+    private static final String SVG_CLASSNAME_POLYFILL =
+            "(function(){try{var p=SVGElement.prototype;" +
+            "Object.defineProperty(p,'className',{configurable:true," +
+            "get:function(){return this.getAttribute('class')||'';}," +
+            "set:function(v){this.setAttribute('class',v==null?'':String(v));}});" +
+            "}catch(e){}})();";
     private final Runnable loadTimeoutRunnable = new Runnable() {
         @Override
         public void run() {
@@ -289,6 +299,8 @@ public class MainActivity extends Activity {
                 String host = "";
                 try { host = new java.net.URI(url).getHost(); } catch (Exception e) { /* 忽略 */ }
                 setStatus("正在加载" + (host.isEmpty() ? "" : " " + host) + "…");
+                // 在页面 JS 执行前注入兼容补丁，修复 SVGElement.className 导致的渲染卡死。
+                view.evaluateJavascript(SVG_CLASSNAME_POLYFILL, null);
             }
 
             @Override
