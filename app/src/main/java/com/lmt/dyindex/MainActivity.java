@@ -24,6 +24,8 @@ import android.view.inputmethod.EditorInfo;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -90,6 +92,14 @@ public class MainActivity extends Activity {
     // 当前抓取模式（默认关键词）。
     private int mode = MODE_KEYWORD;
     private final Button[] modeChips = new Button[MODE_LABELS.length];
+    // 页面加载超时（30s 仍未 onPageFinished 则提示，避免「一直加载中」无反馈）。
+    private static final long LOAD_TIMEOUT_MS = 30000L;
+    private final Runnable loadTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            setStatus("加载超时（30s 未完成）：可能需要登录或网络较慢，请检查页面显示");
+        }
+    };
     private final Handler ui = new Handler(Looper.getMainLooper());
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -272,14 +282,54 @@ public class MainActivity extends Activity {
         // 远程页面 + 扫码登录：放行一切导航，不做顶层跳转拦截。
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                // 每次开始加载（含登录重定向）都重置超时并显示当前主机，方便定位卡在哪个页面。
+                ui.removeCallbacks(loadTimeoutRunnable);
+                ui.postDelayed(loadTimeoutRunnable, LOAD_TIMEOUT_MS);
+                String host = "";
+                try { host = new java.net.URI(url).getHost(); } catch (Exception e) { /* 忽略 */ }
+                setStatus("正在加载" + (host.isEmpty() ? "" : " " + host) + "…");
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
+                ui.removeCallbacks(loadTimeoutRunnable);
                 // 登录跳回后会写入新的登录 Cookie；立即 flush 落盘，避免本次进程被回收后登录态丢失。
                 CookieManager.getInstance().flush();
                 injectExtractor();
+                // 检测是否被重定向到了登录页：直接提示扫码，避免用户对着空白页困惑。
+                final boolean isLogin = url != null
+                        && (url.contains("passport") || url.contains("login") || url.contains("sso"));
                 ui.postDelayed(new Runnable() {
                     @Override
-                    public void run() { setStatus("页面已就绪，等待人群分析区块…"); }
+                    public void run() {
+                        setStatus(isLogin ? "请扫码登录抖音后继续（登录完成会自动跳回）"
+                                : "页面已就绪，等待人群分析区块…");
+                    }
                 }, 400);
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                // 主框架加载失败才提示，子资源（埋点/广告）失败不打扰用户。
+                if (request == null || !request.isForMainFrame()) return;
+                ui.removeCallbacks(loadTimeoutRunnable);
+                String desc = "";
+                int code = -1;
+                try { desc = String.valueOf(error.getDescription()); } catch (Exception e) { /* 忽略 */ }
+                try { code = error.getErrorCode(); } catch (Exception e) { /* 忽略 */ }
+                setStatus("页面加载失败（" + code + "）：" + desc + "，请检查网络或稍后重试");
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            android.webkit.WebResourceResponse errorResponse) {
+                if (request == null || !request.isForMainFrame() || errorResponse == null) return;
+                int status = errorResponse.getStatusCode();
+                if (status >= 400) {
+                    ui.removeCallbacks(loadTimeoutRunnable);
+                    setStatus("HTTP 错误 " + status + "：页面无法访问，请检查网络或登录状态");
+                }
             }
         });
         webView.setWebChromeClient(new WebChromeClient() {
@@ -647,6 +697,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         ui.removeCallbacks(pollReinject);
+        ui.removeCallbacks(loadTimeoutRunnable);
         if (webView != null) {
             webView.loadUrl("about:blank");
             webView.stopLoading();
