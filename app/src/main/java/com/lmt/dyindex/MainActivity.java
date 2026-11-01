@@ -108,14 +108,23 @@ public class MainActivity extends Activity {
     // 时，页面自身的错误边界会把路由跳走，导致一直停在「加载中」。实测这类失败是偶发的
     // （CDN 抖动），刷新一次通常就能恢复。此脚本在页面 JS 之前注入：
     //   1) 监听 error / unhandledrejection，命中 ChunkLoadError 立即 reload；
-    //   2) 兜底看门狗：body 长时间只含「加载中」短文本时也 reload；
-    //   3) 用 sessionStorage 记录上次 reload 时间戳，45s 内不重复 reload，避免死循环。
+    //   2) 拦截 console.error：loadable-components 失败时会 console.error 输出
+    //      "loadable-components: failed to asynchronously load component"，React 错误边界
+    //      会吞掉异常导致 window.onerror 收不到，这里从 console 侧兜底捕获；
+    //   3) 兜底看门狗：body 长时间只含「加载中」短文本时也 reload；
+    //   4) 用 sessionStorage 记录上次 reload 时间戳，45s 内不重复 reload，避免死循环。
     private static final String STUCK_PAGE_RECOVERY =
             "(function(){if(window.__dyRec)return;window.__dyRec=true;" +
+            "console.log('[DyRecovery] injected');" +
             "var K='__dy_last_reload';" +
             "function r(n){try{var t=Date.now(),l=parseInt(sessionStorage.getItem(K)||'0',10);" +
             "if(t-l<45000)return;sessionStorage.setItem(K,String(t));" +
             "console.log('[DyRecovery] '+n+', reloading');location.reload();}catch(e){}}" +
+            "var _ce=console.error;console.error=function(){" +
+            "try{var a=Array.prototype.slice.call(arguments)," +
+            "m=a.map(function(x){return typeof x==='string'?x:(x&&(x.message||x.name))||String(x);}).join(' ');" +
+            "if(/loadable-components|ChunkLoadError|Loading chunk/i.test(m))r('chunk-console');}" +
+            "catch(e){}return _ce.apply(console,arguments);};" +
             "window.addEventListener('error',function(e){var m=(e&&e.message)||'';" +
             "if(/ChunkLoadError|Loading chunk|loadable/i.test(m))r('chunk-error');},true);" +
             "window.addEventListener('unhandledrejection',function(e){" +
@@ -130,6 +139,46 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             setStatus("加载超时（30s 未完成）：可能需要登录或网络较慢，请检查页面显示");
+        }
+    };
+    // 页面卡死看门狗：onPageFinished 后 20s 仍停在「加载中」且无分析内容，则自动 reload 一次。
+    // 抖音 SPA 偶发 chunk 加载失败，页面自身卡在 loading 态且错误边界会吞掉异常，
+    // 原生侧定时检查 DOM 是最可靠的兜底。单次导航只 reload 一次，避免死循环；
+    // 用户手动点「打开」切换关键词时重置计数，允许下一次导航再触发。
+    private static final long STUCK_DETECT_DELAY_MS = 20000L;
+    private boolean stuckReloadDone = false;
+    private final Runnable stuckWatchdog = new Runnable() {
+        @Override
+        public void run() {
+            if (webView == null) return;
+            webView.evaluateJavascript(
+                    "(function(){try{var b=document.body?document.body.innerText:'';" +
+                            "var l=b.indexOf('加载中')>=0;" +
+                            "var c=b.indexOf('人群分析')>=0||b.indexOf('地域分布')>=0||" +
+                            "b.indexOf('关键词指数')>=0||b.indexOf('关联分析')>=0||" +
+                            "b.indexOf('视频搜索结果')>=0||b.indexOf('粉丝分析')>=0||" +
+                            "b.indexOf('话题分析')>=0;" +
+                            "return JSON.stringify({loading:l,hasContent:c,len:b.length});}" +
+                            "catch(e){return JSON.stringify({err:String(e)});}})()",
+                    value -> {
+                        if (value == null) return;
+                        try {
+                            JSONObject o = new JSONObject(value);
+                            boolean loading = o.optBoolean("loading", false);
+                            boolean hasContent = o.optBoolean("hasContent", false);
+                            int len = o.optInt("len", 0);
+                            android.util.Log.w("DyRecovery",
+                                    "stuck-check loading=" + loading + " hasContent=" + hasContent
+                                            + " len=" + len);
+                            if (loading && !hasContent && !stuckReloadDone) {
+                                stuckReloadDone = true;
+                                setStatus("检测到页面卡在加载中，自动重试…");
+                                webView.reload();
+                            }
+                        } catch (Exception e) {
+                            android.util.Log.w("DyRecovery", "stuck-check parse failed: " + e.getMessage());
+                        }
+                    });
         }
     };
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -317,6 +366,7 @@ public class MainActivity extends Activity {
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 // 每次开始加载（含登录重定向）都重置超时并显示当前主机，方便定位卡在哪个页面。
                 ui.removeCallbacks(loadTimeoutRunnable);
+                ui.removeCallbacks(stuckWatchdog);
                 ui.postDelayed(loadTimeoutRunnable, LOAD_TIMEOUT_MS);
                 String host = "";
                 try { host = new java.net.URI(url).getHost(); } catch (Exception e) { /* 忽略 */ }
@@ -333,9 +383,12 @@ public class MainActivity extends Activity {
                 // 登录跳回后会写入新的登录 Cookie；立即 flush 落盘，避免本次进程被回收后登录态丢失。
                 CookieManager.getInstance().flush();
                 injectExtractor();
-                // 检测是否被重定向到了登录页：直接提示扫码，避免用户对着空白页困惑。
+                // 登录页无需卡死检测（等用户扫码即可），其它页面启动 20s 看门狗。
                 final boolean isLogin = url != null
                         && (url.contains("passport") || url.contains("login") || url.contains("sso"));
+                if (!isLogin) {
+                    ui.postDelayed(stuckWatchdog, STUCK_DETECT_DELAY_MS);
+                }
                 ui.postDelayed(new Runnable() {
                     @Override
                     public void run() {
@@ -420,6 +473,8 @@ public class MainActivity extends Activity {
         lastCsv = null;
         lastRowCount = 0;
         setCopyEnabled(false);
+        // 用户手动发起新导航：允许卡死看门狗再次触发自动 reload。
+        stuckReloadDone = false;
         String url;
         String hint;
         switch (mode) {
@@ -734,6 +789,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         ui.removeCallbacks(pollReinject);
         ui.removeCallbacks(loadTimeoutRunnable);
+        ui.removeCallbacks(stuckWatchdog);
         if (webView != null) {
             webView.loadUrl("about:blank");
             webView.stopLoading();
