@@ -1,0 +1,2789 @@
+<html lang="zh-CN" data-trae-theme="light" style="--sticky-h: 286px;"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>目标关键词人群特征综合排名工具</title>
+
+
+<style>
+:root{
+  --primary:#2563eb;--success:#16a34a;--warn:#d97706;--danger:#dc2626;
+  --text:#1f2937;--muted:#6b7280;--bg:#f5f7fa;--card:#ffffff;--border:#e5e7eb;
+  --sticky-h:56px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.55;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",Arial,sans-serif;}
+h1,h2,h3{margin:0;font-weight:600}
+h1{font-size:20px}
+h2{font-size:16px}
+button,input,select{font-family:inherit;font-size:14px}
+a{color:var(--primary);text-decoration:none}
+
+.cdn-error{position:fixed;left:0;right:0;top:0;z-index:100;background:#fef2f2;border-bottom:1px solid var(--danger);
+  color:#991b1b;padding:10px 24px;text-align:center;font-weight:600}
+.cdn-error[hidden]{display:none}
+
+.topbar{position:sticky;top:0;z-index:30;height:56px;background:#fff;border-bottom:1px solid var(--border)}
+.topbar-inner{height:56px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.app-title{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar-right{display:flex;align-items:center;gap:8px;min-width:0}
+.chip{display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  background:#eef2ff;color:#3730a3;border-radius:999px;padding:3px 10px;font-size:12px}
+.chip.file{background:#f3f4f6;color:#4b5563}
+
+.wrap{max-width:1440px;margin:0 auto;padding:0 24px}
+
+.control{position:sticky;top:56px;z-index:20;background:#fff;border-bottom:1px solid var(--border);box-shadow:0 2px 6px rgba(17,24,39,.04)}
+.control-body{padding:14px 0 16px;display:flex;flex-direction:column;gap:12px}
+.control-summary{display:none;height:48px;align-items:center;gap:10px}
+.control-summary.show{display:flex}
+.control.collapsed .control-body{display:none}
+.sum-kw{font-weight:600}
+.sum-status{color:var(--muted)}
+
+.upload-card{border:1.5px dashed #c7d2fe;border-radius:12px;background:#f8faff;padding:14px 16px;
+  display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap;transition:.15s}
+.upload-card.drag{border-color:var(--primary);background:#eff6ff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.upload-card.disabled{opacity:.55}
+.upload-main{display:flex;flex-direction:column;gap:2px;min-width:220px}
+.upload-main strong{font-weight:600}
+.upload-main span{color:var(--muted);font-size:12px}
+.upload-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.file-pill{font-size:12px;color:#374151;background:#eef2ff;border-radius:8px;padding:4px 10px;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.kw-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.kw-row[hidden]{display:none}
+.kw-row label{font-weight:600}
+.kw-row select{width:240px;max-width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:#fff}
+.kw-row .muted{color:var(--muted);font-size:12px}
+
+.btn-row{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border);
+  background:#fff;color:var(--text);border-radius:8px;padding:8px 14px;cursor:pointer;transition:.15s}
+.btn:hover:not(:disabled){border-color:#cbd5e1;background:#f9fafb}
+.btn:disabled{cursor:not-allowed;opacity:.5}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.primary:hover:not(:disabled){background:#1d4ed8;border-color:#1d4ed8}
+.btn.danger{border-color:#fecaca;color:var(--danger);background:#fff}
+.btn.danger:hover:not(:disabled){background:#fef2f2}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--primary);padding:6px 10px}
+.btn.sm{padding:5px 10px;font-size:12px}
+
+.error-bar{position:sticky;top:var(--sticky-h);z-index:15;margin-top:12px;border:1px solid var(--danger);border-radius:12px;background:#fef2f2;color:#991b1b;padding:12px 14px}
+.error-bar[hidden]{display:none}
+.error-bar .err-head{display:flex;align-items:flex-start;gap:10px}
+.error-bar .err-icon{font-weight:700}
+.error-bar .err-body{flex:1;min-width:0}
+.error-bar .err-title{font-weight:600}
+.error-bar .err-detail{font-size:13px;color:#7f1d1d;margin-top:2px;word-break:break-word}
+.error-bar .err-actions{display:flex;gap:8px;flex-shrink:0}
+.error-bar .btn{border-color:#fca5a5;color:#991b1b;background:#fff}
+
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#111827;color:#fff;
+  padding:10px 18px;border-radius:999px;font-size:13px;z-index:60;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.toast[hidden]{display:none}
+
+.main{padding-top:16px;padding-bottom:56px}
+.result-nav{position:sticky;top:var(--sticky-h);z-index:10;display:flex;gap:6px;padding:8px 0;
+  background:var(--bg);overflow-x:auto;scrollbar-width:thin}
+.result-nav[hidden]{display:none}
+.result-nav a{padding:6px 12px;border-radius:999px;color:var(--muted);white-space:nowrap;border:1px solid transparent}
+.result-nav a.active{color:var(--primary);background:#eff6ff;border-color:#bfdbfe}
+.result-nav a:focus-visible,.btn:focus-visible,th:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+
+.results{display:flex;flex-direction:column;gap:16px}
+.empty-state{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:48px 24px;
+  text-align:center;color:var(--muted)}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 3px rgba(17,24,39,.05);padding:18px 20px;scroll-margin-top:calc(var(--sticky-h) + 56px)}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.card-head h2{font-size:16px}
+.card-head .meta{color:var(--muted);font-size:12px}
+.card-note{color:var(--muted);font-size:12px}
+
+.warn-banner{background:#fffbeb;border:1px solid var(--warn);border-radius:10px;padding:10px 12px;color:#92400e;margin-bottom:14px}
+.warn-banner[hidden]{display:none}
+.warn-banner details summary{cursor:pointer}
+
+.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.metric{border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:#fbfcfe}
+.metric .num{font-size:24px;font-weight:600;line-height:1.2}
+.metric .lab{color:var(--muted);font-size:12px;margin-top:2px}
+.metric .sub{color:#9ca3af;font-size:11px}
+
+.kv{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;margin-bottom:10px}
+.kv .k{color:var(--muted)}
+.badge{display:inline-block;background:#f3f4f6;border-radius:6px;padding:1px 8px;font-size:12px;color:#374151}
+.badge.warn{background:#fffbeb;color:#92400e}
+.badge.err{background:#fef2f2;color:#991b1b}
+.badge.ok{background:#f0fdf4;color:#166534}
+
+.block-coverage{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 16px}
+.coverage-list{border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fbfcfe}
+.coverage-list .t{font-size:12px;color:var(--muted);margin-bottom:4px}
+.coverage-list ul{margin:0;padding-left:18px}
+.coverage-list li{font-size:13px;line-height:1.7}
+.coverage-list li.ok{color:#166534}
+.coverage-list li.miss{color:#6b7280}
+
+.sub-title{font-size:14px;font-weight:600;margin:16px 0 8px}
+.stats-table{width:100%;border-collapse:collapse;font-size:13px}
+.stats-table th,.stats-table td{border-bottom:1px solid #eef0f3;padding:6px 8px;text-align:left}
+.stats-table th{background:#f9fafb;color:#374151;font-weight:600;position:sticky;top:0}
+.stats-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+.stats-table tr.zero td{color:#9ca3af}
+
+details.anomaly{border:1px solid var(--border);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:#fbfcfe}
+details.anomaly summary{cursor:pointer;display:flex;justify-content:space-between;gap:10px;font-size:13px}
+details.anomaly summary .cnt{color:var(--muted)}
+details.anomaly ul{margin:8px 0 0;padding-left:20px}
+details.anomaly li{font-size:12px;color:#4b5563;word-break:break-word}
+details.anomaly .truncate{font-size:12px;color:var(--muted);margin-top:6px}
+
+.plain-list{margin:0;padding-left:18px;font-size:13px}
+.plain-list li{line-height:1.8;word-break:break-word}
+.method dl{margin:0;display:grid;grid-template-columns:160px 1fr;gap:8px 14px;font-size:13px}
+.method dt{color:var(--muted)}
+.method dd{margin:0}
+@media (max-width:640px){.method dl{grid-template-columns:1fr} .method dd{margin-bottom:8px}}
+
+.table-wrap{overflow:auto;max-height:480px;border:1px solid var(--border);border-radius:10px}
+.table-wrap.mixed{max-height:600px}
+table.data-table{width:100%;border-collapse:collapse;font-size:13px;min-width:max-content}
+table.data-table thead th{position:sticky;top:0;z-index:5;background:#f9fafb;border-bottom:1px solid var(--border);
+  padding:8px 10px;text-align:left;white-space:nowrap;font-weight:600}
+table.data-table thead th.sortable{cursor:pointer;user-select:none}
+table.data-table thead th.sortable:hover{background:#eff6ff}
+table.data-table thead th .arrow{color:var(--primary);font-size:11px;margin-left:4px}
+table.data-table tbody td{padding:7px 10px;border-bottom:1px solid #f1f3f5;vertical-align:middle}
+table.data-table tbody tr:nth-child(even){background:#fcfcfd}
+table.data-table td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.data-table td.name{font-weight:500}
+.hint-bar{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px}
+
+.tag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;line-height:1.5;white-space:nowrap}
+.q-hh{background:#dcfce7;color:#166534}
+.q-hl{background:#dbeafe;color:#1e40af}
+.q-lh{background:#ffedd5;color:#9a3412}
+.q-ll{background:#f3f4f6;color:#4b5563}
+.tgi-tag{background:#eef2ff;color:#3730a3;margin-left:4px}
+.tag-note{font-size:11px;color:var(--muted);margin-left:4px}
+.r-super{background:#ffedd5;color:#9a3412}
+.r-normal{background:#dcfce7;color:#166534}
+.r-dup{background:#fee2e2;color:#991b1b}
+.r-miss{background:#f3f4f6;color:#4b5563}
+.placeholder{color:#9ca3af}
+
+.loading{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}
+.spinner{width:14px;height:14px;border-radius:50%;border:2px solid #bfdbfe;border-top-color:var(--primary);
+  animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skeleton{display:flex;flex-direction:column;gap:10px}
+.sk-line{height:14px;border-radius:6px;background:#eef1f5;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.65}50%{opacity:1}}
+.progress-track{height:6px;background:#eef2ff;border-radius:999px;overflow:hidden;margin:8px 0}
+.progress-bar{height:100%;width:0;background:var(--primary);transition:width .2s}
+
+@media (max-width:768px){
+  .wrap{padding:0 12px}
+  .btn-row .btn{flex:1 1 45%}
+  .block-coverage{grid-template-columns:1fr}
+  .app-title{font-size:16px}
+  .topbar-right .chip.file{display:none}
+}
+</style>
+</head>
+<body>
+<div id="cdnError" class="cdn-error" hidden="">依赖库加载失败，请检查网络后刷新页面</div>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <h1 class="app-title">目标关键词人群特征综合排名工具</h1>
+    <div class="topbar-right">
+      <span class="chip" id="topKeyword">未选择关键词</span>
+      <span class="chip file" id="topFile">内置数据</span>
+      <button class="btn ghost sm" id="backBtn">返回抓取</button>
+      <button class="btn ghost sm" id="collapseBtn" aria-expanded="true">收起控制区</button>
+    </div>
+  </div>
+</header>
+
+<section class="control" id="control">
+  <div class="wrap">
+    <div class="control-summary" id="controlSummary">
+      <span class="sum-kw" id="sumKW">未选择关键词</span>
+      <span class="sum-status" id="sumStatus">未上传文件</span>
+      <button class="btn ghost sm" id="expandBtn">展开控制区</button>
+    </div>
+    <div class="control-body" id="controlBody">
+      <div class="upload-card" id="dropzone" hidden="">
+        <div class="upload-main">
+          <strong>上传抖音指数数据文件</strong>
+          <span>支持 .csv / .xlsx / .xls / .json，单文件 ≤ 50MB（超出仅提示，仍会解析）</span>
+          <span class="file-pill" id="fileInfo">尚未选择文件</span>
+        </div>
+        <div class="upload-actions">
+          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.json" hidden="">
+          <button class="btn primary" id="pickBtn">点击选择文件</button>
+        </div>
+      </div>
+      <div class="kw-row" id="kwRow" hidden="">
+        <label for="kwSelect">关键词</label>
+        <select id="kwSelect"></select>
+        <span class="muted" id="kwCount"></span>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" id="reanalyzeBtn" disabled="">重新分析</button>
+        <button class="btn" id="sampleBtn" hidden="">加载示例数据</button>
+        <button class="btn" id="exportBtn" disabled="">导出结果 CSV</button>
+        <button class="btn danger" id="clearBtn" disabled="">清空</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="error-bar" id="errorBar" role="alert" aria-live="assertive" hidden=""></div>
+</div>
+
+<main class="wrap main">
+  <nav class="result-nav" id="resultNav" aria-label="结果区导航" hidden="">
+    <a href="#card-overview" data-target="card-overview">总览</a>
+    <a href="#card-quality" data-target="card-quality">数据质量</a>
+    <a href="#card-method" data-target="card-method">方法参数</a>
+    <a href="#card-blocks" data-target="card-blocks">分区块榜单</a>
+    <a href="#card-mixed" data-target="card-mixed">二级混合总榜</a>
+  </nav>
+  <section class="results" id="results">
+    <div class="empty-state" id="emptyState">请上传数据文件后开始分析</div>
+  </section>
+</main>
+
+<div class="toast" id="toast" hidden=""></div>
+
+<script>
+'use strict';
+
+/* ============================ 全局常量 ============================ */
+const MAX_UPLOAD_MB = 50;
+const ENCODING_FFFD_MAX = 20;
+const ENCODING_RATIO_MAX = 0.005;
+const RANK_DISPLAY_LIMIT = 100;
+const LIST_TRUNCATE = 20;
+const ANOMALY_SAMPLE_MAX = 20;
+const EXPORT_PROGRESS_ROWS = 5000;
+const EQUAL_WEIGHT = 0.5;
+const STANDARD_BLOCK_COUNT = 8;
+const KEYWORD_NULL_RATIO_ALERT = 0.3;
+const SEP = '\u0001';
+const CONTENT_BLOCK = '用户内容浏览分布';
+const UNLABELED_KW = '未标注关键词';
+const SINGLE_KW = '单关键词';
+const SAMPLE_SOURCE = '抖音指数_穿搭_人群分析.xlsx';
+const STANDARD_BLOCKS = [
+  '地域分布-城市',
+  '地域分布-城市级别',
+  '地域分布-省份',
+  '年龄分布',
+  '性别分布',
+  CONTENT_BLOCK,
+  '手机价格分布',
+  '手机品牌分布'
+];
+const QUADRANT_TEXT = {
+  HH: '重点机会',
+  HL: '规模/强度驱动，需提升偏好',
+  LH: '偏好驱动，适合精准渗透',
+  LL: '优先级较低'
+};
+const QUADRANT_CLASS = { HH: 'q-hh', HL: 'q-hl', LH: 'q-lh', LL: 'q-ll' };
+
+/* 无关键词列时从文件名推导关键词：抖音指数_<关键词>_人群分析.xlsx → <关键词> */
+function deriveKeywordFromName(name) {
+  const base = String(name === null || name === undefined ? '' : name)
+    .replace(/^.*[\\/]/, '')
+    .replace(/\.(csv|xlsx|xls|json)$/i, '')
+    .trim();
+  if (base === '') return '';
+  const patterns = [
+    /^抖音指数[_\-\s]+([^_\-\s]+)[_\-\s]+人群分析$/,
+    /^([^_\-\s]+)[_\-\s]+人群分析$/,
+    /^抖音指数[_\-\s]+([^_\-\s]+)$/
+  ];
+  for (let i = 0; i < patterns.length; i++) {
+    const m = base.match(patterns[i]);
+    if (m && m[1].trim()) return m[1].trim();
+  }
+  return '';
+}
+
+/* ============================ 运行时状态 ============================ */
+const state = {
+  status: 'idle',
+  file: null,
+  parsed: null,
+  hasKeywordField: false,
+  keywords: [],
+  currentKeyword: '',
+  clean: null,
+  keywordMeta: null,
+  resultCache: new Map(),
+  sortState: new Map(),
+  generation: 0,
+  collapsed: false,
+  parsing: null,
+  activeReader: null,
+  tableRegistry: new Map(),
+  domIdMap: new Map(),
+  activeNavObserver: null
+};
+
+/* ============================ 通用工具 ============================ */
+let _collator = null;
+function collator() {
+  if (_collator) return _collator;
+  try {
+    _collator = new Intl.Collator('zh-Hans-CN');
+  } catch (e1) {
+    try {
+      _collator = new Intl.Collator('zh');
+    } catch (e2) {
+      _collator = new Intl.Collator();
+    }
+  }
+  return _collator;
+}
+
+function isFiniteNumber(v) {
+  return typeof v === 'number' && isFinite(v);
+}
+
+function fmt(v, digits) {
+  if (v === null || v === undefined || typeof v !== 'number' || !isFinite(v)) return '—';
+  if (digits === 0) return String(Math.round(v));
+  return v.toFixed(digits);
+}
+
+function esc(v) {
+  return String(v === null || v === undefined ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toHalfWidth(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/[\uFF01-\uFF5E]/g, function (c) {
+      return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+    })
+    .replace(/\u3000/g, ' ');
+}
+
+function stripBOM(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/^\uFEFF/, '');
+}
+
+function trimAll(s) {
+  return String(s === null || s === undefined ? '' : s).replace(/^[\s\u3000]+|[\s\u3000]+$/g, '');
+}
+
+function normHeaderCell(s) {
+  return trimAll(toHalfWidth(stripBOM(s))).toLowerCase();
+}
+
+function normCell(s) {
+  return trimAll(toHalfWidth(stripBOM(s)));
+}
+
+function blankText(v) {
+  return String(v === null || v === undefined ? '' : v).replace(/[\s\u3000]/g, '') === '';
+}
+
+function isBlankRow(cells) {
+  for (let i = 0; i < cells.length; i++) {
+    if (!blankText(cells[i])) return false;
+  }
+  return true;
+}
+
+function isoDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function cellToText(v, ctx) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return '';
+    if (ctx) ctx.dateWarnings += 1;
+    return isoDate(v);
+  }
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (typeof v === 'string') return v;
+  try {
+    return String(v);
+  } catch (e) {
+    return '';
+  }
+}
+
+function normalizeText(v, ctx) {
+  return cellToText(v, ctx);
+}
+
+function normalizeNumericRaw(v) {
+  return v;
+}
+
+/* 数值解析固定流水线：去空白/千分位 → 记录 %/％ 尾缀（转半角之前）→ 全角转半角 → 去尾部 % → 严格正则 → parseFloat */
+function parseNumericString(v) {
+  const raw = v === null || v === undefined ? '' : String(v);
+  let s = raw.replace(/[\s\u3000]/g, '').replace(/[,，]/g, '');
+  const hadPct = s.endsWith('%') || s.endsWith('\uFF05');
+  s = toHalfWidth(s);
+  if (hadPct) s = s.replace(/%$/, '');
+  if (!/^-?\d+(\.\d+)?$/.test(s)) {
+    return { ok: false, value: NaN, hadPct: hadPct, raw: raw };
+  }
+  const num = parseFloat(s);
+  if (!isFinite(num)) return { ok: false, value: NaN, hadPct: hadPct, raw: raw };
+  return { ok: true, value: num, hadPct: hadPct, raw: raw };
+}
+
+function ascending(a, b) { return a - b; }
+
+/* 已排序数组的中位数；median 与 robustScores 共用，避免重复排序 */
+function medianOfSorted(arr) {
+  const n = arr.length;
+  if (n === 0) return NaN;
+  if (n % 2 === 1) return arr[(n - 1) / 2];
+  return (arr[n / 2 - 1] + arr[n / 2]) / 2;
+}
+
+/* 已排序数组的分位数（线性插值，type 7） */
+function quantileOfSorted(arr, p) {
+  const n = arr.length;
+  if (!n) return NaN;
+  const pos = (n - 1) * p;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (hi >= n) return arr[n - 1];
+  return arr[lo] + (arr[hi] - arr[lo]) * (pos - lo);
+}
+
+function median(values) {
+  return medianOfSorted(values.slice().sort(ascending));
+}
+
+/* 分位数（线性插值）：用于稳健标准化的 Q1 / Q3 */
+function quantile(values, p) {
+  return quantileOfSorted(values.slice().sort(ascending), p);
+}
+
+/* 稳健标准化：中位数为 50 分，每 1 个 IQR 记 25 分（Q1→37.5、Q3→62.5）
+   ±2 个 IQR（Tukey 栅栏外侧）截断为 0 / 100，保留中段与近尾部的领先幅度。
+   实现只排序一次（中位数 + Q1 + Q3 复用同一有序数组）。 */
+function robustScores(values) {
+  const n = values.length;
+  if (n < 2) return new Array(n).fill(NaN);
+  const sorted = values.slice().sort(ascending);
+  const med = medianOfSorted(sorted);
+  const iqr = quantileOfSorted(sorted, 0.75) - quantileOfSorted(sorted, 0.25);
+  if (!(iqr > 0)) return new Array(n).fill(50);
+  return values.map(function (v) {
+    return Math.max(0, Math.min(100, 50 + 25 * (v - med) / iqr));
+  });
+}
+
+/* 两维等权合成：S、P 各占 50%（等权系数固定，不随数据调整） */
+function weightedComposite(S, P) {
+  return EQUAL_WEIGHT * S + EQUAL_WEIGHT * P;
+}
+
+function err(code, message, detail) {
+  return { code: code, message: message, detail: detail || '' };
+}
+
+/* ============================ 文件读取与解析 ============================ */
+let lastProgressAt = 0;
+/* 进度条 DOM 更新节流：worker 的 progress 事件可能非常密集，避免高频布局抖动 */
+function updateParseProgress(cursor, total) {
+  const now = Date.now();
+  if (now - lastProgressAt < 100) return;
+  lastProgressAt = now;
+  const bar = document.querySelector('#results .progress-bar');
+  if (bar && total > 0) {
+    const pct = Math.min(99, Math.round(cursor / total * 100));
+    bar.style.width = pct + '%';
+  }
+}
+
+function readArrayBuffer(file) {
+  return new Promise(function (resolve, reject) {
+    const fr = new FileReader();
+    state.activeReader = fr;
+    fr.onload = function () { state.activeReader = null; resolve(fr.result); };
+    fr.onerror = function () { state.activeReader = null; reject(err('READ_FAIL', '文件读取失败，请重新选择文件。')); };
+    fr.onabort = function () { state.activeReader = null; reject({ aborted: true }); };
+    try { fr.readAsArrayBuffer(file); } catch (e) { reject(err('READ_FAIL', '文件读取失败，请重新选择文件。')); }
+  });
+}
+
+function decodeUtf8(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const decoder = new TextDecoder('utf-8', { fatal: false });
+  const textRaw = decoder.decode(bytes);
+  const text = stripBOM(textRaw);
+  /* 逐字符计数，避免为每个替换字符分配数组（大文件下更省内存） */
+  let bad = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 0xFFFD) bad += 1;
+  }
+  return { text: text, bad: bad, length: text.length };
+}
+
+function checkEncoding(info, kind) {
+  const ratio = info.length > 0 ? info.bad / info.length : 0;
+  if (info.bad > ENCODING_FFFD_MAX || ratio > ENCODING_RATIO_MAX) {
+    return err(kind === 'csv' ? 'CSV_ENCODING' : 'JSON_ENCODING',
+      '检测到非 UTF-8 编码字符，请将 ' + (kind === 'csv' ? 'CSV' : 'JSON') + ' 另存为 UTF-8 编码后重试。');
+  }
+  return null;
+}
+
+function papaRun(text, useWorker) {
+  return new Promise(function (resolve) {
+    let done = false;
+    let progressed = false;
+    let guard = null;
+    const startedAt = Date.now();
+    let lastTick = startedAt;
+    const config = {
+      header: false,
+      skipEmptyLines: 'greedy',
+      worker: useWorker,
+      dynamicTyping: false,
+      delimiter: '',
+      progress: function (p) {
+        progressed = true;
+        lastTick = Date.now();
+        if (p && p.meta) updateParseProgress(p.meta.cursor, text.length);
+      },
+      complete: function (res) {
+        if (done) return;
+        if (useWorker && res && res.errors && res.errors.length) {
+          const first = res.errors[0];
+          if (first && /worker/i.test(String(first.message || ''))) {
+            done = true;
+            clearInterval(guard);
+            resolve({ workerFailed: true });
+            return;
+          }
+        }
+        done = true;
+        clearInterval(guard);
+        resolve({ parsed: res });
+      },
+      error: function (e) {
+        if (done) return;
+        done = true;
+        clearInterval(guard);
+        resolve({ error: e });
+      }
+    };
+    /* 看门狗：worker 启动后 3 秒无任何进度 → 降级主线程；
+       已有进度但连续 30 秒无新增 → 视为 worker 卡死，同样降级，避免页面永久停在“正在解析…” */
+    guard = useWorker ? setInterval(function () {
+      if (done) return;
+      const idle = Date.now() - lastTick;
+      if (!progressed ? idle > 3000 : idle > 30000) {
+        done = true;
+        clearInterval(guard);
+        resolve({ workerFailed: true });
+      }
+    }, 150) : null;
+    try {
+      Papa.parse(text, config);
+    } catch (e) {
+      if (!done) {
+        done = true;
+        if (guard) clearInterval(guard);
+        resolve({ workerFailed: true });
+      }
+    }
+  });
+}
+
+async function parseCsv(text) {
+  let out = await papaRun(text, true);
+  if (out.workerFailed) {
+    console.warn('[CSV] worker 模式启动失败或 3 秒内无进度，降级为 worker:false 重试');
+    out = await papaRun(text, false);
+  }
+  if (out.error) {
+    throw err('CSV_PARSE', 'CSV 解析失败：' + String(out.error.message || out.error) + '。');
+  }
+  const res = out.parsed;
+  if (!res || !res.data) throw err('CSV_PARSE', 'CSV 解析失败：未获得有效数据。');
+  if (res.errors && res.errors.length) {
+    const e = res.errors[0];
+    const row = typeof e.row === 'number' ? e.row + 1 : 1;
+    throw err('CSV_PARSE', 'CSV 解析失败：' + String(e.message || '格式错误') + '（第 ' + row + ' 行）。');
+  }
+  return res.data;
+}
+
+async function parseExcel(buffer) {
+  await new Promise(function (r) { setTimeout(r, 0); });
+  let wb;
+  try {
+    wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
+  } catch (e) {
+    throw err('EXCEL_EMPTY', 'Excel 解析失败：' + String(e.message || e) + '。');
+  }
+  if (!wb.SheetNames || wb.SheetNames.length === 0) {
+    throw err('EXCEL_NO_SHEET', 'Excel 未包含工作表，请检查文件。');
+  }
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const merges = ws && ws['!merges'] ? ws['!merges'].length : 0;
+  const json = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '', blankrows: false });
+  if (!json || json.length === 0) {
+    throw err('EXCEL_EMPTY', 'Excel 第一个工作表无数据，请检查文件。');
+  }
+  return { rows: json, sheetName: sheetName, merges: merges };
+}
+
+function objectArrayField(obj) {
+  const keys = Object.keys(obj);
+  for (let i = 0; i < keys.length; i++) {
+    const val = obj[keys[i]];
+    if (Array.isArray(val) && (val.length === 0 || val.every(function (x) { return x && typeof x === 'object' && !Array.isArray(x); }))) {
+      return { key: keys[i], value: val };
+    }
+  }
+  return null;
+}
+
+function jsonToRows(obj) {
+  let arr;
+  if (Array.isArray(obj)) {
+    arr = obj;
+    if (arr.length === 0) throw err('JSON_SHAPE', 'JSON 数组为空，请检查文件。');
+    if (!arr.every(function (x) { return x && typeof x === 'object' && !Array.isArray(x); })) {
+      throw err('JSON_SHAPE', 'JSON 数组元素需为对象。');
+    }
+  } else if (obj && typeof obj === 'object') {
+    const field = objectArrayField(obj);
+    if (!field) throw err('JSON_SHAPE', 'JSON 需为对象数组，或包含对象数组字段的对象。');
+    arr = field.value;
+    if (arr.length === 0) throw err('JSON_SHAPE', 'JSON 数组字段为空，请检查文件。');
+    if (!arr.every(function (x) { return x && typeof x === 'object' && !Array.isArray(x); })) {
+      throw err('JSON_SHAPE', 'JSON 数组元素需为对象。');
+    }
+  } else {
+    throw err('JSON_SHAPE', 'JSON 需为对象数组，或包含对象数组字段的对象。');
+  }
+  const keys = [];
+  const seen = new Set();
+  arr.forEach(function (item) {
+    Object.keys(item).forEach(function (k) {
+      if (!seen.has(k)) { seen.add(k); keys.push(k); }
+    });
+  });
+  const header = keys.slice();
+  const rows = [header];
+  arr.forEach(function (item) {
+    const row = keys.map(function (k) {
+      const v = item[k];
+      return v === null || v === undefined ? '' : v;
+    });
+    rows.push(row);
+  });
+  return rows;
+}
+
+function buildTable(rawRows, meta) {
+  const headerRow = (rawRows[0] || []).map(function (v) { return String(v === null || v === undefined ? '' : v); });
+  const headerLen = headerRow.length;
+  const dataRows = [];
+  let extraCols = 0;
+  for (let i = 1; i < rawRows.length; i++) {
+    const row = rawRows[i] || [];
+    const cells = row.map(function (v) { return v === null || v === undefined ? '' : v; });
+    if (isBlankRow(cells)) continue;
+    const out = cells.slice(0, headerLen);
+    if (cells.length > headerLen) extraCols += cells.length - headerLen;
+    while (out.length < headerLen) out.push('');
+    dataRows.push(out);
+  }
+  const m = Object.assign({}, meta, {
+    totalRows: dataRows.length,
+    extraCols: extraCols,
+    headerRaw: headerRow
+  });
+  return { headerRow: headerRow, dataRows: dataRows, meta: m };
+}
+
+/* ============================ 字段匹配 ============================ */
+const FIELD_SPEC = [
+  { key: 'block', label: '区块', required: true },
+  { key: 'category', label: '分类', required: true },
+  { key: 'share', label: '占比', required: true },
+  { key: 'tgi', label: 'TGI', required: true },
+  { key: 'keyword', label: '关键词', required: false }
+];
+
+function matchFields(headerRow) {
+  const normHeaders = headerRow.map(function (h) { return normHeaderCell(h); });
+  const mapping = {};
+  const matched = [];
+  const missing = [];
+  const duplicates = [];
+  const emptyHeaderCols = normHeaders.filter(function (h) { return h === ''; }).length;
+
+  FIELD_SPEC.forEach(function (spec) {
+    const target = normHeaderCell(spec.label);
+    const cols = [];
+    normHeaders.forEach(function (h, i) { if (h === target) cols.push(i); });
+    if (cols.length === 0) {
+      if (spec.required) missing.push(spec.label);
+      return;
+    }
+    const col = cols[0];
+    mapping[spec.key] = col;
+    matched.push({ label: spec.label, col: col, text: headerRow[col] });
+    if (cols.length > 1) {
+      duplicates.push('字段名重复，已取第一列：' + headerRow[col] + '（列 ' + (col + 1) + '）');
+    }
+  });
+
+  return {
+    mapping: mapping,
+    matched: matched,
+    missing: missing,
+    duplicates: duplicates,
+    emptyHeaderCols: emptyHeaderCols,
+    hasKeywordField: Object.prototype.hasOwnProperty.call(mapping, 'keyword')
+  };
+}
+
+/* ============================ 数据清洗（步骤 1–9） ============================ */
+function cleanData(table, fieldMatch) {
+  const mapping = fieldMatch.mapping;
+  const hasKeywordField = fieldMatch.hasKeywordField;
+  const sourceName = (table.meta && (table.meta.fileName || table.meta.source)) || '';
+  const derivedKeyword = hasKeywordField ? '' : deriveKeywordFromName(sourceName);
+  const stats = {
+    emptyCategory: 0,
+    shareMissing: 0,
+    shareInvalid: 0,
+    shareConverted: 0,
+    tgiMissing: 0,
+    tgiNegative: 0,
+    tgiPct: 0,
+    nonStandardBlock: 0,
+    zeroValue: 0,
+    tgiZeroMark: 0,
+    duplicate: 0,
+    parentDup: 0,
+    extraCols: table.meta.extraCols || 0,
+    dateWarnings: 0,
+    keywordNullRatio: 0
+  };
+  const anomalies = {
+    emptyCategory: [],
+    shareMissing: [],
+    shareInvalid: [],
+    shareConverted: [],
+    tgiMissing: [],
+    tgiNegative: [],
+    tgiPct: [],
+    nonStandardBlock: [],
+    zeroValue: [],
+    tgiZeroMark: [],
+    duplicate: [],
+    parentDup: [],
+    extraCols: [],
+    dateWarnings: [],
+    keywordNullRatio: []
+  };
+  const samples = { shareConverted: [], tgiPct: [] };
+  const ctx = { dateWarnings: 0 };
+  let unlabeledCount = 0;
+
+  /* 异常明细仅用于页面展示（每段最多 LIST_TRUNCATE 条），计数以 stats 为准；
+     限制存储条数，避免大文件下按行累积字符串造成内存膨胀 */
+  function note(bucket, text) {
+    if (bucket.length < LIST_TRUNCATE) bucket.push(text);
+  }
+
+  const records = table.dataRows.map(function (cells, idx) {
+    const block = normCell(cellToText(cells[mapping.block], ctx));
+    const category = normCell(cellToText(cells[mapping.category], ctx));
+    let keyword = hasKeywordField ? normCell(cellToText(cells[mapping.keyword], ctx)) : (derivedKeyword || SINGLE_KW);
+    return {
+      _rowIndex: idx + 1,
+      block: block,
+      category: category,
+      keyword: keyword,
+      shareRaw: cells[mapping.share],
+      tgiRaw: cells[mapping.tgi],
+      share: null,
+      tgi: null,
+      _tgiAbnormal: false,
+      _parentDup: false
+    };
+  });
+
+  /* 步骤 1：字段与值规范化（含关键词归一） */
+  records.forEach(function (r) {
+    if (hasKeywordField && r.keyword === '') {
+      r.keyword = UNLABELED_KW;
+      unlabeledCount += 1;
+    }
+  });
+
+  const seenBlocks = new Set();
+  records.forEach(function (r) { seenBlocks.add(r.block); });
+  const blocksPresent = STANDARD_BLOCKS.filter(function (b) { return seenBlocks.has(b); });
+  const blocksMissing = STANDARD_BLOCKS.filter(function (b) { return !seenBlocks.has(b); });
+
+  let working = records.slice();
+
+  /* 步骤 2：行级空值检查 */
+  working = working.filter(function (r) {
+    if (r.block === '' || r.category === '') {
+      stats.emptyCategory += 1;
+      note(anomalies.emptyCategory, '第 ' + r._rowIndex + ' 行：区块=' + (r.block || '(空)') + '，分类=' + (r.category || '(空)'));
+      return false;
+    }
+    return true;
+  });
+
+  /* 步骤 3：占比解析 */
+  const afterShare = [];
+  working.forEach(function (r) {
+    const p = parseNumericString(r.shareRaw);
+    if (!p.ok) {
+      stats.shareMissing += 1;
+      note(anomalies.shareMissing, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，占比原值=' + String(p.raw));
+      return;
+    }
+    if (p.hadPct) {
+      const v = p.value / 100;
+      if (v < 0 || v > 1) {
+        stats.shareInvalid += 1;
+        note(anomalies.shareInvalid, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，占比原值=' + String(p.raw));
+        return;
+      }
+      r.share = v;
+      afterShare.push(r);
+      return;
+    }
+    const v = p.value;
+    if (v < 0) {
+      stats.shareInvalid += 1;
+      note(anomalies.shareInvalid, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，占比原值=' + String(p.raw));
+      return;
+    }
+    if (v <= 1) {
+      r.share = v;
+      afterShare.push(r);
+      return;
+    }
+    if (v <= 100) {
+      r.share = v / 100;
+      stats.shareConverted += 1;
+      note(anomalies.shareConverted, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，文件原值占比=' + String(p.raw));
+      if (samples.shareConverted.length < ANOMALY_SAMPLE_MAX) samples.shareConverted.push(String(p.raw));
+      afterShare.push(r);
+      return;
+    }
+    stats.shareInvalid += 1;
+    note(anomalies.shareInvalid, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，占比原值=' + String(p.raw));
+  });
+
+  /* 步骤 4：TGI 解析 */
+  const afterTgi = [];
+  afterShare.forEach(function (r) {
+    const p = parseNumericString(r.tgiRaw);
+    if (!p.ok) {
+      stats.tgiMissing += 1;
+      note(anomalies.tgiMissing, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，TGI原值=' + String(p.raw));
+      return;
+    }
+    if (p.hadPct) {
+      stats.tgiPct += 1;
+      note(anomalies.tgiPct, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，TGI原值=' + String(p.raw));
+      if (samples.tgiPct.length < ANOMALY_SAMPLE_MAX) samples.tgiPct.push(String(p.raw));
+    }
+    if (p.value < 0) {
+      stats.tgiNegative += 1;
+      note(anomalies.tgiNegative, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '，TGI原值=' + String(p.raw));
+      return;
+    }
+    r.tgi = p.value;
+    afterTgi.push(r);
+  });
+
+  /* 步骤 5：区块标准性判定 */
+  const afterBlock = [];
+  afterTgi.forEach(function (r) {
+    if (STANDARD_BLOCKS.indexOf(r.block) === -1) {
+      stats.nonStandardBlock += 1;
+      if (anomalies.nonStandardBlock.indexOf(r.block) === -1) {
+        note(anomalies.nonStandardBlock, r.block);
+      }
+      return;
+    }
+    afterBlock.push(r);
+  });
+
+  /* 步骤 6：零值剔除 */
+  const afterZero = [];
+  afterBlock.forEach(function (r) {
+    if (r.share === 0 && r.tgi === 0) {
+      stats.zeroValue += 1;
+      note(anomalies.zeroValue, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '（占比 0、TGI 0）');
+      return;
+    }
+    afterZero.push(r);
+  });
+
+  /* 步骤 7：TGI 异常标记（零值标记，保留） */
+  afterZero.forEach(function (r) {
+    if (r.tgi === 0 && r.share > 0) {
+      r._tgiAbnormal = true;
+      stats.tgiZeroMark += 1;
+      note(anomalies.tgiZeroMark, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category + '（占比>0、TGI=0）');
+    }
+  });
+
+  /* 步骤 8：重复检测 */
+  const dropped = new Set();
+  const generalFirst = new Map();
+  afterZero.forEach(function (r) {
+    const isParent = r.block === CONTENT_BLOCK && r.category.indexOf('_') === -1;
+    if (isParent) return;
+    const key = r.keyword + SEP + r.block + SEP + r.category;
+    if (generalFirst.has(key)) {
+      stats.duplicate += 1;
+      note(anomalies.duplicate, '第 ' + r._rowIndex + ' 行：区块=' + r.block + '，分类=' + r.category);
+      dropped.add(r);
+    } else {
+      generalFirst.set(key, r);
+    }
+  });
+
+  const parentGroups = new Map();
+  afterZero.forEach(function (r) {
+    if (!(r.block === CONTENT_BLOCK && r.category.indexOf('_') === -1)) return;
+    const key = r.keyword + SEP + r.block + SEP + r.category;
+    if (!parentGroups.has(key)) parentGroups.set(key, []);
+    parentGroups.get(key).push(r);
+  });
+  parentGroups.forEach(function (group) {
+    if (group.length > 1) {
+      group.forEach(function (r) { r._parentDup = true; });
+      stats.parentDup += group.length;
+      const name = group[0].category;
+      if (anomalies.parentDup.indexOf(name) === -1) {
+        note(anomalies.parentDup, name);
+      }
+    }
+  });
+
+  /* 步骤 9：清洗保留记录 */
+  const kept = afterZero.filter(function (r) { return !dropped.has(r); });
+
+  /* 分组索引：按 关键词 + SEP + 区块 一次性分组，渲染/计算阶段不再反复 filter 全量数据 */
+  const grouped = new Map();
+  const countByKeyword = new Map();
+  let hasUnderscore = false;
+  kept.forEach(function (r) {
+    const key = r.keyword + SEP + r.block;
+    let arr = grouped.get(key);
+    if (!arr) {
+      arr = [];
+      grouped.set(key, arr);
+    }
+    arr.push(r);
+    countByKeyword.set(r.keyword, (countByKeyword.get(r.keyword) || 0) + 1);
+    if (!hasUnderscore && r.block === CONTENT_BLOCK && r.category.indexOf('_') !== -1) {
+      hasUnderscore = true;
+    }
+  });
+  /* 父类索引与父类重复集合一次性构建，供各关键词复用 */
+  const parentInfo = buildParentIndex(kept);
+
+  /* 软提示：关键词空值比例过高 */
+  if (hasKeywordField && records.length > 0) {
+    const ratio = unlabeledCount / records.length;
+    if (ratio > KEYWORD_NULL_RATIO_ALERT) {
+      stats.keywordNullRatio = 1;
+      anomalies.keywordNullRatio.push('未标注关键词记录 ' + unlabeledCount + ' / 全部 ' + records.length + '（' + fmt(ratio * 100, 1) + '%）');
+    }
+  }
+
+  stats.dateWarnings = ctx.dateWarnings;
+  if (stats.extraCols > 0) {
+    anomalies.extraCols.push('数据行存在超出表头的多余单元格 ' + stats.extraCols + ' 个，已忽略');
+  }
+  if (ctx.dateWarnings > 0) {
+    anomalies.dateWarnings.push('检测到 ' + ctx.dateWarnings + ' 个日期单元格，已格式化为 YYYY-MM-DD');
+  }
+
+  return {
+    kept: kept,
+    grouped: grouped,
+    countByKeyword: countByKeyword,
+    parentInfo: parentInfo,
+    hasUnderscore: hasUnderscore,
+    stats: stats,
+    anomalies: anomalies,
+    samples: samples,
+    blocksPresent: blocksPresent,
+    blocksMissing: blocksMissing,
+    totalRecords: records.length,
+    unlabeledCount: unlabeledCount,
+    hasKeywordField: hasKeywordField,
+    derivedKeyword: derivedKeyword,
+    extraCols: table.meta.extraCols || 0,
+    meta: table.meta,
+    fieldMatch: fieldMatch
+  };
+}
+/* ============================ 父类索引与 R 计算 ============================ */
+function buildParentIndex(kept) {
+  const index = new Map();
+  const dupSet = new Set();
+  kept.forEach(function (r) {
+    if (r.block !== CONTENT_BLOCK) return;
+    const key = r.keyword + SEP + r.category;
+    if (r._parentDup) {
+      dupSet.add(key);
+      return;
+    }
+    if (r.category.indexOf('_') === -1 && r.category !== '') {
+      index.set(key, r.share);
+    }
+  });
+  return { index: index, dupSet: dupSet };
+}
+
+function computeR(record, parentInfo) {
+  const parentName = record.category.split('_')[0];
+  const key = record.keyword + SEP + parentName;
+  if (parentInfo.dupSet.has(key)) return { status: '父类重复', value: null };
+  if (!parentInfo.index.has(key)) return { status: '父类缺失', value: null };
+  const parentShare = parentInfo.index.get(key);
+  if (parentShare === 0) return { status: '父类占比为 0', value: null };
+  const R = record.share / parentShare * 100;
+  return { status: R > 100 ? '超常发挥' : '正常', value: R, parentName: parentName, parentShare: parentShare };
+}
+
+/* ============================ 榜单计算 ============================ */
+function rankingComparator(a, b) {
+  if (b.composite !== a.composite) return b.composite - a.composite;
+  if (b.share !== a.share) return b.share - a.share;
+  if (b.tgi !== a.tgi) return b.tgi - a.tgi;
+  const c = collator().compare(a.name, b.name);
+  if (c) return c;
+  return a._rowIndex - b._rowIndex;
+}
+
+function interpretationOf(row, isMixed) {
+  if (!row.qCode) return '—';
+  if (isMixed && row.Rstatus === '超常发挥' && isFiniteNumber(row.R)) {
+    return '相对父类强度 ' + fmt(row.R, 1) + '%，属超常发挥，需结合业务含义解读。';
+  }
+  switch (row.qCode) {
+    case 'HH':
+      return row.tgi > 100 ? '规模与偏好双高，属重点机会。' : '规模高但偏好未超大盘，属规模机会，需优化内容匹配。';
+    case 'HL':
+      return '规模/强度突出但偏好低于大盘，需提升内容匹配。';
+    case 'LH':
+      return '偏好高于大盘但规模/强度有限，适合精准渗透。';
+    case 'LL':
+      return row.tgi > 100 ? '偏好高于大盘但综合表现一般，可小范围测试。' : '综合表现一般，优先级较低。';
+    default:
+      return '—';
+  }
+}
+
+function buildList(records, opts) {
+  const isMixed = !!opts.isMixed;
+  const rows = records.map(function (r) {
+    const copy = {
+      name: r.category,
+      block: r.block,
+      keyword: r.keyword,
+      share: r.share,
+      tgi: r.tgi,
+      _rowIndex: r._rowIndex,
+      R: isFiniteNumber(r.R) ? r.R : null,
+      Rstatus: r.Rstatus || '',
+      parentName: r.parentName || '',
+      parentShare: isFiniteNumber(r.parentShare) ? r.parentShare : null,
+      seq: r.seq || 0,
+      S: null,
+      P: null,
+      composite: null,
+      rank: null,
+      qCode: '',
+      qText: '样本不足',
+      interp: '—'
+    };
+    return copy;
+  });
+  const n = rows.length;
+  let medS = NaN;
+  let medP = NaN;
+  if (n >= 2) {
+    const sPct = robustScores(rows.map(function (r) { return r.share; }));
+    const pPct = robustScores(rows.map(function (r) { return r.tgi; }));
+    rows.forEach(function (r, i) {
+      r.S = sPct[i];
+      r.P = pPct[i];
+      r.composite = weightedComposite(r.S, r.P);
+    });
+    const sorted = rows.slice().sort(rankingComparator);
+    sorted.forEach(function (r, i) { r.rank = i + 1; });
+    /* 稳健分是原值的单调线性映射，中位数恒映射为 50；IQR=0 时该维全为 50。
+       因此榜内中位数恒为 50，无需再对 S/P 排序求中位数。 */
+    medS = 50;
+    medP = 50;
+    /* 某维无差异（IQR=0，全为 50）时无法区分高低，不应把全榜判成“高”象限 */
+    const sFlat = rows.every(function (r) { return r.S === 50; });
+    const pFlat = rows.every(function (r) { return r.P === 50; });
+    rows.forEach(function (r) {
+      if (sFlat || pFlat) {
+        r.qCode = '';
+        r.qText = '该维无差异，不判定四象限';
+        r.interp = '—';
+        return;
+      }
+      const highS = r.S >= medS;
+      const highP = r.P >= medP;
+      r.qCode = (highS ? 'H' : 'L') + (highP ? 'H' : 'L');
+      r.qText = QUADRANT_TEXT[r.qCode];
+      r.interp = interpretationOf(r, isMixed);
+    });
+    return {
+      id: opts.id,
+      name: opts.name,
+      n: n,
+      rows: sorted,
+      medS: medS,
+      medP: medP,
+      smallSample: n < 4,
+      hasRank: true,
+      isMixed: isMixed
+    };
+  }
+  rows.sort(function (a, b) {
+    const c = collator().compare(a.name, b.name);
+    return c || a._rowIndex - b._rowIndex;
+  });
+  return {
+    id: opts.id,
+    name: opts.name,
+    n: n,
+    rows: rows,
+    medS: NaN,
+    medP: NaN,
+    smallSample: false,
+    hasRank: false,
+    isMixed: isMixed
+  };
+}
+
+function buildKeywordResult(keyword) {
+  const clean = state.clean;
+  /* 复用 cleanData 一次性构建的分组索引与父类索引，避免对全量 kept 反复 filter */
+  const grouped = clean.grouped;
+  const parentInfo = clean.parentInfo;
+  const blockLists = [];
+  let mixedList = null;
+  const unavailable = { dup: [], missing: [], zero: [], dupTotal: 0, missingTotal: 0, zeroTotal: 0 };
+
+  function rowsOf(block) {
+    return grouped.get(keyword + SEP + block) || [];
+  }
+
+  STANDARD_BLOCKS.forEach(function (block) {
+    const rows = rowsOf(block);
+    if (block === CONTENT_BLOCK) {
+      blockLists.push(buildList(rows.filter(function (r) {
+        return r.category.indexOf('_') === -1 && !r._parentDup && !r._tgiAbnormal;
+      }), { id: 'block:' + block, name: block }));
+      return;
+    }
+    const usable = rows.filter(function (r) { return !r._tgiAbnormal; });
+    if (block === '手机价格分布') {
+      const seen = new Set();
+      let seq = 0;
+      const tagged = [];
+      usable.slice().sort(function (a, b) { return a._rowIndex - b._rowIndex; }).forEach(function (r) {
+        if (seen.has(r.category)) return;
+        seen.add(r.category);
+        seq += 1;
+        /* 复制一份再打档位序号，避免把 seq 写回 clean.kept 中的原始记录 */
+        tagged.push(Object.assign({}, r, { seq: seq }));
+      });
+      blockLists.push(buildList(tagged, { id: 'block:' + block, name: block }));
+      return;
+    }
+    blockLists.push(buildList(usable, { id: 'block:' + block, name: block }));
+  });
+
+  const secondaryRows = [];
+  rowsOf(CONTENT_BLOCK).forEach(function (r) {
+    if (r.category.indexOf('_') === -1) return;
+    if (r._tgiAbnormal) return;
+    const rInfo = computeR(r, parentInfo);
+    if (rInfo.value === null) {
+      const item = '第 ' + r._rowIndex + ' 行：' + r.category + '（父类 ' + (rInfo.parentName || r.category.split('_')[0] || '(空)') + '）';
+      const kind = rInfo.status === '父类重复' ? 'dup' : (rInfo.status === '父类缺失' ? 'missing' : 'zero');
+      unavailable[kind + 'Total'] += 1;
+      /* 明细只保留前 LIST_TRUNCATE 条，计数单独累加，避免大文件下内存膨胀 */
+      if (unavailable[kind].length < LIST_TRUNCATE) unavailable[kind].push(item);
+      return;
+    }
+    secondaryRows.push({
+      category: r.category,
+      block: r.block,
+      keyword: r.keyword,
+      share: r.share,
+      tgi: r.tgi,
+      _rowIndex: r._rowIndex,
+      R: rInfo.value,
+      Rstatus: rInfo.status,
+      parentName: rInfo.parentName,
+      parentShare: rInfo.parentShare
+    });
+  });
+
+  mixedList = buildList(secondaryRows, { id: 'mixed', name: '二级混合总榜', isMixed: true });
+
+  const superCount = mixedList.rows.filter(function (r) { return r.Rstatus === '超常发挥'; }).length;
+
+  return {
+    keyword: keyword,
+    keptCount: clean.countByKeyword.get(keyword) || 0,
+    blockLists: blockLists,
+    mixed: mixedList,
+    unavailable: unavailable,
+    superCount: superCount,
+    hasMixed: mixedList.n >= 2
+  };
+}
+
+function listById(result, id) {
+  if (id === 'mixed') return result.mixed;
+  for (let i = 0; i < result.blockLists.length; i++) {
+    if (result.blockLists[i].id === id) return result.blockLists[i];
+  }
+  return null;
+}
+
+/* ============================ 示例数据 ============================ */
+function makeSampleTable() {
+  /* 数据来源：抖音指数_穿搭_人群分析.xlsx（真实文件，249 行，无关键词列） */
+  const header = ['区块', '分类', '占比', 'TGI'];
+  const rows = [
+    ["地域分布-城市","上海","2.13%","109"],
+    ["地域分布-城市","重庆","2.10%","95"],
+    ["地域分布-城市","广州","1.99%","99"],
+    ["地域分布-城市","北京","1.98%","125"],
+    ["地域分布-城市","成都","1.97%","100"],
+    ["地域分布-城市","深圳","1.76%","86"],
+    ["地域分布-城市","苏州","1.59%","105"],
+    ["地域分布-城市","杭州","1.49%","117"],
+    ["地域分布-城市","西安","1.46%","106"],
+    ["地域分布-城市","郑州","1.43%","105"],
+    ["地域分布-城市","东莞","1.36%","89"],
+    ["地域分布-城市","武汉","1.32%","79"],
+    ["地域分布-城市","天津","1.09%","107"],
+    ["地域分布-城市","长沙","1.05%","105"],
+    ["地域分布-城市","宁波","1.02%","106"],
+    ["地域分布-城市","合肥","0.97%","97"],
+    ["地域分布-城市","南京","0.95%","100"],
+    ["地域分布-城市","佛山","0.95%","100"],
+    ["地域分布-城市","昆明","0.90%","105"],
+    ["地域分布-城市","济南","0.88%","102"],
+    ["地域分布-城市","青岛","0.88%","110"],
+    ["地域分布-城市","金华","0.87%","111"],
+    ["地域分布-城市","保定","0.85%","103"],
+    ["地域分布-城市","温州","0.82%","108"],
+    ["地域分布-城市","石家庄","0.79%","104"],
+    ["地域分布-城市","泉州","0.75%","97"],
+    ["地域分布-城市","无锡","0.73%","104"],
+    ["地域分布-城市","南宁","0.71%","91"],
+    ["地域分布-城市","福州","0.68%","103"],
+    ["地域分布-城市","潍坊","0.67%","97"],
+    ["地域分布-城市级别","三线城市","21.27%","94"],
+    ["地域分布-城市级别","四线城市","18.45%","90"],
+    ["地域分布-城市级别","新一线城市","18.38%","94"],
+    ["地域分布-城市级别","二线城市","17.49%","99"],
+    ["地域分布-城市级别","五线城市","11.66%","94"],
+    ["地域分布-城市级别","一线城市","7.50%","105"],
+    ["地域分布-城市级别","港澳台城市","0.01%","107"],
+    ["地域分布-省份","广东","10.79%","100"],
+    ["地域分布-省份","江苏","7.39%","95"],
+    ["地域分布-省份","河南","7.03%","98"],
+    ["地域分布-省份","浙江","6.68%","97"],
+    ["地域分布-省份","山东","6.56%","105"],
+    ["地域分布-省份","四川","5.27%","100"],
+    ["地域分布-省份","河北","4.65%","100"],
+    ["地域分布-省份","安徽","4.37%","94"],
+    ["地域分布-省份","湖北","3.91%","99"],
+    ["地域分布-省份","湖南","3.71%","101"],
+    ["地域分布-省份","云南","3.42%","99"],
+    ["地域分布-省份","陕西","3.30%","106"],
+    ["地域分布-省份","福建","3.17%","105"],
+    ["地域分布-省份","江西","2.88%","97"],
+    ["地域分布-省份","广西","2.88%","97"],
+    ["地域分布-省份","贵州","2.72%","115"],
+    ["地域分布-省份","山西","2.34%","93"],
+    ["地域分布-省份","新疆","2.24%","111"],
+    ["地域分布-省份","辽宁","2.19%","102"],
+    ["地域分布-省份","上海","2.13%","97"],
+    ["地域分布-省份","重庆","2.10%","95"],
+    ["地域分布-省份","北京","1.98%","110"],
+    ["地域分布-省份","内蒙古","1.38%","98"],
+    ["地域分布-省份","黑龙江","1.34%","100"],
+    ["地域分布-省份","甘肃","1.33%","107"],
+    ["地域分布-省份","吉林","1.11%","101"],
+    ["地域分布-省份","天津","1.09%","103"],
+    ["地域分布-省份","海南","0.81%","89"],
+    ["地域分布-省份","宁夏","0.45%","103"],
+    ["地域分布-省份","西藏","0.44%","117"],
+    ["地域分布-省份","青海","0.34%","116"],
+    ["地域分布-省份","香港","0.02%","138"],
+    ["地域分布-省份","台湾","0.00%","0"],
+    ["地域分布-省份","澳门","0.00%","0"],
+    ["年龄分布","18-23岁","17.05%","86.88"],
+    ["年龄分布","24-30岁","18.22%","130.13"],
+    ["年龄分布","31-40岁","29.07%","94.92"],
+    ["年龄分布","41-50岁","15.43%","101.3"],
+    ["年龄分布","51岁+","20.23%","98.6"],
+    ["性别分布","男性","47%","99"],
+    ["性别分布","女性","53%","101"],
+    ["用户内容浏览分布","时尚","14.43%","166.68"],
+    ["用户内容浏览分布","时尚_穿搭","8.17%","102.53"],
+    ["用户内容浏览分布","时尚_美妆","6.11%","98.35"],
+    ["用户内容浏览分布","时尚_美发","4.28%","184.39"],
+    ["用户内容浏览分布","时尚_美容","3.82%","170.5"],
+    ["用户内容浏览分布","美食","9.81%","94.48"],
+    ["用户内容浏览分布","美食_美食展示","7.23%","108.38"],
+    ["用户内容浏览分布","美食_制作美食","6.82%","111.08"],
+    ["用户内容浏览分布","美食_日常美食展示","4.51%","97.32"],
+    ["用户内容浏览分布","旅行","5.28%","93.4"],
+    ["用户内容浏览分布","旅行_风景","3.73%","93.23"],
+    ["用户内容浏览分布","旅行_住宿酒店","2.01%","180.74"],
+    ["用户内容浏览分布","旅行_旅行攻略","0.00%","0"],
+    ["用户内容浏览分布","文化教育","5.28%","93.21"],
+    ["用户内容浏览分布","文化教育_中小学教育","11.63%","173.9"],
+    ["用户内容浏览分布","文化教育_大学生活","9.74%","121.65"],
+    ["用户内容浏览分布","文化教育_语言教育","8.46%","117.5"],
+    ["用户内容浏览分布","文化教育_成人教育","6.23%","114.18"],
+    ["用户内容浏览分布","文化教育_人文景观","3.48%","107.94"],
+    ["用户内容浏览分布","文化教育_其他兴趣教育","2.96%","96.08"],
+    ["用户内容浏览分布","文化教育_绘画","1.84%","109.42"],
+    ["用户内容浏览分布","文化教育_亲子教育","1.25%","160.52"],
+    ["用户内容浏览分布","文化教育_传统文化","1.14%","136.83"],
+    ["用户内容浏览分布","文化教育_考学","0.91%","102.23"],
+    ["用户内容浏览分布","文化教育_民俗","0.77%","93.34"],
+    ["用户内容浏览分布","文化教育_生活小窍门类","0.77%","179.86"],
+    ["用户内容浏览分布","文化教育_心理","0.61%","115.4"],
+    ["用户内容浏览分布","文化教育_读书","0.37%","191.86"],
+    ["用户内容浏览分布","文化教育_书法","0.33%","99.55"],
+    ["用户内容浏览分布","文化教育_礼仪类","0.19%","118.7"],
+    ["用户内容浏览分布","文化教育_知识科普","0.00%","0"],
+    ["用户内容浏览分布","运动","5.18%","151.15"],
+    ["用户内容浏览分布","运动_竞技运动","2.85%","164.72"],
+    ["用户内容浏览分布","运动_健身","2.70%","115.98"],
+    ["用户内容浏览分布","运动_极限运动","2.59%","101.59"],
+    ["用户内容浏览分布","运动_水上运动","2.32%","93.64"],
+    ["用户内容浏览分布","运动_球类项目","2.30%","112.68"],
+    ["用户内容浏览分布","运动_田径","1.87%","181.77"],
+    ["用户内容浏览分布","运动_赛事","1.61%","107.1"],
+    ["用户内容浏览分布","运动_日常活动","1.09%","108.77"],
+    ["用户内容浏览分布","拍摄","3.74%","91.69"],
+    ["用户内容浏览分布","拍摄_半身自拍","2.83%","92.42"],
+    ["用户内容浏览分布","拍摄_全身自拍","2.75%","140.75"],
+    ["用户内容浏览分布","拍摄_录屏","2.56%","95.63"],
+    ["用户内容浏览分布","拍摄_摄影","1.31%","118.31"],
+    ["用户内容浏览分布","拍摄_拍身体","1.09%","117.5"],
+    ["用户内容浏览分布","拍摄_技术","0.42%","112.41"],
+    ["用户内容浏览分布","拍摄_随拍","0.12%","109.61"],
+    ["用户内容浏览分布","创意","3.59%","111.13"],
+    ["用户内容浏览分布","创意_手工类","2.20%","109.74"],
+    ["用户内容浏览分布","创意_定格动画类","2.01%","165.03"],
+    ["用户内容浏览分布","创意_特效类","1.86%","98"],
+    ["用户内容浏览分布","创意_贴纸道具","1.73%","100.8"],
+    ["用户内容浏览分布","创意_魔术类","1.13%","183.69"],
+    ["用户内容浏览分布","演绎","3.28%","127.07"],
+    ["用户内容浏览分布","演绎_剧情短剧","2.36%","94.13"],
+    ["用户内容浏览分布","演绎_访谈类","1.88%","90.27"],
+    ["用户内容浏览分布","演绎_张嘴","0.77%","111.88"],
+    ["用户内容浏览分布","动植物","3.15%","94.68"],
+    ["用户内容浏览分布","动植物_非家养动物","2.39%","110"],
+    ["用户内容浏览分布","汽车","2.52%","94"],
+    ["用户内容浏览分布","汽车_汽车体验","2.12%","110.92"],
+    ["用户内容浏览分布","汽车_其他车辆拍摄","1.67%","158.99"],
+    ["用户内容浏览分布","汽车_汽车科普","1.46%","170.84"],
+    ["用户内容浏览分布","汽车_汽车展示","0.72%","106.72"],
+    ["用户内容浏览分布","汽车_维修改装","0.52%","108.47"],
+    ["用户内容浏览分布","生活","2.45%","91.4"],
+    ["用户内容浏览分布","生活_负面事件","7.35%","174.87"],
+    ["用户内容浏览分布","生活_民生","2.05%","100.8"],
+    ["用户内容浏览分布","生活_生活探店","1.91%","150.71"],
+    ["用户内容浏览分布","生活_婚礼","1.81%","151.28"],
+    ["用户内容浏览分布","生活_生活用品","1.61%","161.54"],
+    ["用户内容浏览分布","生活_开箱","1.40%","115.38"],
+    ["用户内容浏览分布","生活_装潢","1.17%","115.46"],
+    ["用户内容浏览分布","生活_交通","1.17%","116.89"],
+    ["用户内容浏览分布","生活_生活探店2","0.81%","96.56"],
+    ["用户内容浏览分布","生活_棋牌","0.59%","120.87"],
+    ["用户内容浏览分布","生活_团体活动","0.38%","177.12"],
+    ["用户内容浏览分布","生活_证件类","0.34%","97.94"],
+    ["用户内容浏览分布","生活_日常活动","0.00%","0"],
+    ["用户内容浏览分布","亲子","2.41%","92.85"],
+    ["用户内容浏览分布","亲子_母婴","2.03%","92.99"],
+    ["用户内容浏览分布","亲子_萌娃","1.87%","95.6"],
+    ["用户内容浏览分布","亲子_儿童才艺表演","0.66%","118.28"],
+    ["用户内容浏览分布","影视","2.29%","98.94"],
+    ["用户内容浏览分布","影视_电视剧电影","2.21%","132.71"],
+    ["用户内容浏览分布","影视_明星类","1.27%","98.18"],
+    ["用户内容浏览分布","影视_综艺类","0.48%","107.02"],
+    ["用户内容浏览分布","影视_片场类","0.28%","91.75"],
+    ["用户内容浏览分布","影视_电影电视剧","0.00%","0"],
+    ["用户内容浏览分布","二次元","2.04%","101.38"],
+    ["用户内容浏览分布","二次元_二次元衍生","8.12%","111.43"],
+    ["用户内容浏览分布","二次元_漫画类","1.86%","156.22"],
+    ["用户内容浏览分布","二次元_动画类","1.62%","96.03"],
+    ["用户内容浏览分布","二次元_Coser","0.00%","0"],
+    ["用户内容浏览分布","舞蹈","1.93%","147.81"],
+    ["用户内容浏览分布","舞蹈_手势舞类","3.49%","116.32"],
+    ["用户内容浏览分布","舞蹈_日常舞蹈","1.70%","111.42"],
+    ["用户内容浏览分布","舞蹈_民族舞","1.51%","119.74"],
+    ["用户内容浏览分布","舞蹈_专业舞蹈","0.17%","111.83"],
+    ["用户内容浏览分布","游戏","1.68%","109.35"],
+    ["用户内容浏览分布","游戏_角色扮演","1.15%","103.49"],
+    ["用户内容浏览分布","游戏_吃鸡类","0.71%","104.05"],
+    ["用户内容浏览分布","游戏_模拟养成","0.64%","114.15"],
+    ["用户内容浏览分布","游戏_竞技游戏","0.51%","89.25"],
+    ["用户内容浏览分布","游戏_休闲类","0.49%","113.61"],
+    ["用户内容浏览分布","游戏_射击游戏","0.39%","105.86"],
+    ["用户内容浏览分布","游戏_节奏类","0.36%","115.74"],
+    ["用户内容浏览分布","游戏_体育类","0.36%","110.67"],
+    ["用户内容浏览分布","游戏_棋牌类","0.31%","108.52"],
+    ["用户内容浏览分布","游戏_动作游戏","0.21%","187.22"],
+    ["用户内容浏览分布","游戏_策略类","0.15%","106.52"],
+    ["用户内容浏览分布","游戏_解说游戏","0.13%","136.51"],
+    ["用户内容浏览分布","游戏_游戏其他","0.12%","212.59"],
+    ["用户内容浏览分布","游戏_卡牌游戏","0.09%","128.27"],
+    ["用户内容浏览分布","游戏_益智类游戏","0.02%","130.12"],
+    ["用户内容浏览分布","游戏_小游戏","0.02%","80.5"],
+    ["用户内容浏览分布","音乐","1.67%","107.58"],
+    ["用户内容浏览分布","音乐_唱歌","1.40%","97.43"],
+    ["用户内容浏览分布","音乐_西洋乐器","1.00%","113.58"],
+    ["用户内容浏览分布","音乐_民族乐器","0.88%","110.99"],
+    ["用户内容浏览分布","音乐_编曲","0.00%","0"],
+    ["用户内容浏览分布","情感","1.63%","109.44"],
+    ["用户内容浏览分布","情感_星座","3.20%","103.52"],
+    ["用户内容浏览分布","情感_情感类录屏","0.10%","117.99"],
+    ["用户内容浏览分布","情感_剧情演绎","0.00%","88.94"],
+    ["用户内容浏览分布","情感_情感解说","0.00%","0"],
+    ["用户内容浏览分布","情感_情侣","0.00%","0"],
+    ["用户内容浏览分布","新闻","1.62%","122.1"],
+    ["用户内容浏览分布","新闻_访谈类新闻","1.47%","99.81"],
+    ["用户内容浏览分布","新闻_时政新闻","0.98%","104.83"],
+    ["用户内容浏览分布","新闻_军事新闻","0.91%","96.31"],
+    ["用户内容浏览分布","新闻_社会新闻","0.65%","98.33"],
+    ["用户内容浏览分布","新闻_财经新闻","0.02%","77.25"],
+    ["用户内容浏览分布","新闻_灾难新闻","0.00%","0"],
+    ["用户内容浏览分布","新闻_民生新闻","0.00%","0"],
+    ["用户内容浏览分布","科技","1.47%","168.87"],
+    ["用户内容浏览分布","科技_电子产品","1.24%","94.49"],
+    ["用户内容浏览分布","军政法警","1.47%","139.17"],
+    ["用户内容浏览分布","军政法警_军事","1.04%","161.34"],
+    ["用户内容浏览分布","军政法警_法律","0.98%","155.81"],
+    ["用户内容浏览分布","军政法警_政策","0.94%","108.83"],
+    ["用户内容浏览分布","军政法警_消防","0.69%","107.59"],
+    ["用户内容浏览分布","军政法警_警务","0.54%","105.37"],
+    ["用户内容浏览分布","农村","1.47%","104.46"],
+    ["用户内容浏览分布","农村_农作物","0.98%","143.71"],
+    ["用户内容浏览分布","农村_农村建筑","0.75%","108.73"],
+    ["用户内容浏览分布","农村_农村生产","0.66%","106.62"],
+    ["用户内容浏览分布","医疗","1.29%","102.67"],
+    ["用户内容浏览分布","医疗_医院","0.77%","114.72"],
+    ["用户内容浏览分布","医疗_医疗机构","0.72%","171.19"],
+    ["用户内容浏览分布","医疗_医疗用品","0.52%","164.71"],
+    ["用户内容浏览分布","医疗_治疗过程","0.43%","92.84"],
+    ["用户内容浏览分布","医疗_医疗内容","0.31%","111.97"],
+    ["用户内容浏览分布","医疗_其他医疗服务","0.11%","117.68"],
+    ["用户内容浏览分布","金融","1.20%","142.05"],
+    ["用户内容浏览分布","金融_房产","1.21%","105.95"],
+    ["用户内容浏览分布","金融_金融场所","0.22%","185.6"],
+    ["用户内容浏览分布","金融_金融产品","0.18%","109.47"],
+    ["用户内容浏览分布","金融_财经知识","0.00%","0"],
+    ["用户内容浏览分布","其他","0.60%","177.8"],
+    ["手机价格分布","1000以下","0.1","140"],
+    ["手机价格分布","1000-2000","0.22","120"],
+    ["手机价格分布","2000-3000","0.25","110"],
+    ["手机价格分布","3000-5000","0.18","95"],
+    ["手机价格分布","5000以上","0.08","80"],
+    ["手机品牌分布","华为","0.2","130"],
+    ["手机品牌分布","苹果","0.25","160"],
+    ["手机品牌分布","小米","0.18","110"],
+    ["手机品牌分布","OPPO","0.12","90"],
+    ["手机品牌分布","vivo","0.1","85"],
+  ];
+  return {
+    headerRow: header,
+    dataRows: rows,
+    meta: { source: SAMPLE_SOURCE, totalRows: rows.length, extraCols: 0 }
+  };
+}
+/* ============================ UI 基础 ============================ */
+function el(id) { return document.getElementById(id); }
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = el('toast');
+  t.textContent = msg;
+  t.hidden = false;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.hidden = true; }, 3000);
+}
+
+/* 解析/分析失败时清掉骨架屏与加载条，避免页面停在加载态 */
+function clearLoadingArea() {
+  const results = el('results');
+  const bar = el('loadingBar');
+  if (bar) bar.remove();
+  if (results.querySelector('.skeleton')) {
+    results.innerHTML = '<div class="empty-state" id="emptyState">处理失败，请重新选择文件后重试</div>';
+  }
+  teardownNav();
+  el('resultNav').hidden = true;
+  if (slowTimer) {
+    clearTimeout(slowTimer);
+    slowTimer = null;
+  }
+}
+
+function showError(messageCode, detail) {
+  clearLoadingArea();
+  const bar = el('errorBar');
+  bar.innerHTML = '<div class="err-head"><div class="err-icon">!</div><div class="err-body">' +
+    '<div class="err-title">处理失败</div><div class="err-detail">' + esc(messageCode) +
+    (detail ? '<br>' + esc(detail) : '') + '</div></div>' +
+    '<div class="err-actions"><button class="btn sm" id="errPick">重新选择文件</button>' +
+    '<button class="btn sm" id="errClose">关闭</button></div></div>';
+  bar.hidden = false;
+  el('errPick').addEventListener('click', function () { el('fileInput').click(); });
+  el('errClose').addEventListener('click', function () {
+    bar.hidden = true;
+    if (state.clean) setStatus('success'); else setStatus('idle');
+  });
+}
+function clearError() {
+  const bar = el('errorBar');
+  bar.hidden = true;
+  bar.innerHTML = '';
+}
+
+function setStatus(status) {
+  state.status = status;
+  syncUI();
+}
+
+function fileSizeText(file) {
+  if (!file) return '未上传文件';
+  if (file.sample) return '示例数据（内置） · 内置';
+  const size = file.size;
+  if (size < 1024) return file.name + ' · ' + size + ' B';
+  if (size < 1024 * 1024) return file.name + ' · ' + (size / 1024).toFixed(1) + ' KB';
+  return file.name + ' · ' + (size / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+function currentKeywordLabel() {
+  if (!state.clean) return '未选择关键词';
+  if (!state.hasKeywordField) return state.clean.derivedKeyword || SINGLE_KW;
+  return state.currentKeyword || '—';
+}
+
+function currentResult() {
+  return state.resultCache.get(state.currentKeyword) || null;
+}
+
+function hasValidRecords() {
+  const r = currentResult();
+  if (!r) return false;
+  let n = r.mixed.n;
+  r.blockLists.forEach(function (l) { n += l.n; });
+  return n > 0;
+}
+
+function syncUI() {
+  const status = state.status;
+  const busy = status === 'parsing' || status === 'analyzing';
+  const idle = status === 'idle';
+  const success = status === 'success';
+
+  el('topKeyword').textContent = currentKeywordLabel();
+  el('topFile').textContent = state.file ? fileSizeText(state.file) : '未上传文件';
+  el('sumKW').textContent = currentKeywordLabel();
+  el('sumStatus').textContent = state.file ? fileSizeText(state.file) : '未上传文件';
+
+  el('sampleBtn').disabled = busy;
+  el('pickBtn').disabled = busy || !CDN_OK;
+  el('reanalyzeBtn').disabled = busy || idle || !state.clean;
+  el('exportBtn').disabled = busy || !success || !hasValidRecords();
+  el('clearBtn').disabled = busy || (!state.file && !state.clean);
+  el('kwSelect').disabled = busy && status === 'parsing';
+
+  const uploadCard = el('dropzone');
+  if (uploadCard) uploadCard.classList.toggle('disabled', busy || !CDN_OK);
+
+  if (el('fileInfo')) {
+    let text = '尚未选择文件';
+    if (state.file) {
+      text = fileSizeText(state.file) + ' · ' + ({
+        idle: '待分析', parsing: '正在解析…', analyzing: '正在分析…', success: '已完成', error: '解析失败'
+      }[status] || '');
+    }
+    el('fileInfo').textContent = text;
+  }
+}
+
+/* ============================ 排序与表格 ============================ */
+function getSort(list) {
+  const key = state.currentKeyword + SEP + list.id;
+  if (!state.sortState.has(key)) state.sortState.set(key, { key: 'rank', dir: 'asc' });
+  return state.sortState.get(key);
+}
+
+function sortValue(row, key) {
+  switch (key) {
+    case 'share': return row.share;
+    case 'tgi': return row.tgi;
+    case 'S': return row.S;
+    case 'P': return row.P;
+    case 'composite': return row.composite;
+    case 'rank': return row.rank;
+    case 'R': return row.R;
+    case 'seq': return row.seq;
+    default: return null;
+  }
+}
+
+function displayRows(list) {
+  const st = getSort(list);
+  const rows = list.rows.slice();
+  if (st.key === 'rank') {
+    if (st.dir === 'desc') rows.reverse();
+    return rows.slice(0, RANK_DISPLAY_LIMIT);
+  }
+  const dir = st.dir === 'asc' ? 1 : -1;
+  rows.sort(function (a, b) {
+    const va = sortValue(a, st.key);
+    const vb = sortValue(b, st.key);
+    const na = isFiniteNumber(va) ? va : -Number.MAX_SAFE_INTEGER;
+    const nb = isFiniteNumber(vb) ? vb : -Number.MAX_SAFE_INTEGER;
+    if (na !== nb) return (na - nb) * dir;
+    const ra = isFiniteNumber(a.rank) ? a.rank : Number.MAX_SAFE_INTEGER;
+    const rb = isFiniteNumber(b.rank) ? b.rank : Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
+    return a._rowIndex - b._rowIndex;
+  });
+  return rows.slice(0, RANK_DISPLAY_LIMIT);
+}
+
+function thSort(label, key, list, width, alignRight, sortable) {
+  const style = 'min-width:' + width + 'px;' + (alignRight ? 'text-align:right;' : '');
+  if (!sortable) {
+    return '<th scope="col" style="' + style + '">' + esc(label) + '</th>';
+  }
+  const st = getSort(list);
+  const active = st.key === key;
+  const arrow = active ? (st.dir === 'asc' ? '▲' : '▼') : '';
+  const aria = active ? (st.dir === 'asc' ? 'ascending' : 'descending') : 'none';
+  return '<th scope="col" role="columnheader" tabindex="0" class="sortable" aria-sort="' + aria +
+    '" data-sort="' + key + '" style="' + style + '">' + esc(label) +
+    '<span class="arrow">' + arrow + '</span></th>';
+}
+
+/* 占比展示/导出：最多 2 位小数并去掉尾随 0，避免 0.01% 被舍成 0.0% */
+function formatShare(v) {
+  if (!isFiniteNumber(v)) return '—';
+  let s = (v * 100).toFixed(2);
+  if (s.indexOf('.') !== -1) s = s.replace(/0+$/, '').replace(/\.$/, '');
+  return s + '%';
+}
+
+/* 数值展示/导出：最多 2 位小数并去掉尾随 0，保留 86.88 这类原始精度 */
+function numText(v) {
+  if (!isFiniteNumber(v)) return '—';
+  let s = v.toFixed(2);
+  if (s.indexOf('.') !== -1) s = s.replace(/0+$/, '').replace(/\.$/, '');
+  return s;
+}
+
+function quadrantCell(row, list) {
+  if (!row.qCode) {
+    return '<span class="placeholder">' + esc(row.qText || '样本不足') + '</span>';
+  }
+  let html = '<span class="tag ' + QUADRANT_CLASS[row.qCode] + '">' + esc(row.qText) + '</span>';
+  if (row.tgi > 100) html += '<span class="tag tgi-tag">偏好高于大盘</span>';
+  if (list.smallSample) html += '<span class="tag-note">样本较少，仅参考</span>';
+  return html;
+}
+
+function rStatusTag(status) {
+  const map = {
+    '超常发挥': 'r-super',
+    '正常': 'r-normal',
+    '父类重复': 'r-dup',
+    '父类缺失': 'r-miss',
+    '父类占比为 0': 'r-miss'
+  };
+  return '<span class="tag ' + (map[status] || 'r-miss') + '">' + esc(status || '—') + '</span>';
+}
+
+function buildBlockTableHTML(list) {
+  const priceBlock = list.name === '手机价格分布';
+  let head = '<tr>' +
+    thSort('区块', 'block', list, 120, false, false) +
+    thSort('分类', 'name', list, 160, false, false) +
+    (priceBlock ? thSort('原始档位顺序', 'seq', list, 90, true, true) : '') +
+    thSort('原始占比', 'share', list, 90, true, true) +
+    thSort('原始 TGI', 'tgi', list, 80, true, true) +
+    thSort('规模分 S（稳健）', 'S', list, 100, true, true) +
+    thSort('偏好分 P（稳健）', 'P', list, 100, true, true) +
+    thSort('综合得分（稳健等权）', 'composite', list, 130, true, true) +
+    thSort('区块内排名', 'rank', list, 70, true, true) +
+    thSort('四象限', 'quad', list, 140, false, false) +
+    thSort('一句解读', 'interp', list, 240, false, false) +
+    '</tr>';
+  const rows = displayRows(list).map(function (r) {
+    return '<tr>' +
+      '<td>' + esc(r.block) + '</td>' +
+      '<td class="name">' + esc(r.name) + '</td>' +
+      (priceBlock ? '<td class="num">' + (r.seq || '—') + '</td>' : '') +
+      '<td class="num">' + formatShare(r.share) + '</td>' +
+      '<td class="num">' + numText(r.tgi) + '</td>' +
+      '<td class="num">' + fmt(r.S, 1) + '</td>' +
+      '<td class="num">' + fmt(r.P, 1) + '</td>' +
+      '<td class="num">' + fmt(r.composite, 2) + '</td>' +
+      '<td class="num">' + (r.rank === null ? '—' : r.rank) + '</td>' +
+      '<td>' + quadrantCell(r, list) + '</td>' +
+      '<td>' + esc(r.interp) + '</td></tr>';
+  }).join('');
+  return '<thead>' + head + '</thead><tbody>' + rows + '</tbody>';
+}
+
+function buildMixedTableHTML(list) {
+  const head = '<tr>' +
+    thSort('二级类目', 'name', list, 160, false, false) +
+    thSort('所属一级类目', 'parent', list, 120, false, false) +
+    thSort('原始占比', 'share', list, 90, true, true) +
+    thSort('父类占比', 'parentShare', list, 90, false, false) +
+    thSort('R', 'R', list, 80, true, true) +
+    thSort('R 状态', 'Rstatus', list, 110, false, false) +
+    thSort('原始 TGI', 'tgi', list, 80, true, true) +
+    thSort('规模分 S（稳健）', 'S', list, 100, true, true) +
+    thSort('偏好分 P（稳健）', 'P', list, 100, true, true) +
+    thSort('综合得分（稳健等权）', 'composite', list, 130, true, true) +
+    thSort('混排排名', 'rank', list, 80, true, true) +
+    thSort('四象限', 'quad', list, 140, false, false) +
+    thSort('一句解读', 'interp', list, 240, false, false) +
+    '</tr>';
+  const rows = displayRows(list).map(function (r) {
+    return '<tr>' +
+      '<td class="name">' + esc(r.name) + '</td>' +
+      '<td>' + esc(r.parentName || '—') + '</td>' +
+      '<td class="num">' + formatShare(r.share) + '</td>' +
+      '<td class="num">' + (isFiniteNumber(r.parentShare) ? formatShare(r.parentShare) : '—') + '</td>' +
+      '<td class="num">' + (isFiniteNumber(r.R) ? fmt(r.R, 1) + '%' : '—') + '</td>' +
+      '<td>' + rStatusTag(r.Rstatus) + '</td>' +
+      '<td class="num">' + numText(r.tgi) + '</td>' +
+      '<td class="num">' + fmt(r.S, 1) + '</td>' +
+      '<td class="num">' + fmt(r.P, 1) + '</td>' +
+      '<td class="num">' + fmt(r.composite, 2) + '</td>' +
+      '<td class="num">' + (r.rank === null ? '—' : r.rank) + '</td>' +
+      '<td>' + quadrantCell(r, list) + '</td>' +
+      '<td>' + esc(r.interp) + '</td></tr>';
+  }).join('');
+  return '<thead>' + head + '</thead><tbody>' + rows + '</tbody>';
+}
+
+function tableHTML(list, listId) {
+  const body = list.isMixed ? buildMixedTableHTML(list) : buildBlockTableHTML(list);
+  const domId = state.domIdMap.get(listId) || ('tbl-' + state.domIdMap.size);
+  const wrapClass = list.isMixed ? 'table-wrap mixed' : 'table-wrap';
+  return '<div class="' + wrapClass + '" id="wrap-' + domId + '">' +
+    '<table class="data-table" id="' + domId + '" data-list="' + esc(list.id) + '">' +
+    body + '</table></div>';
+}
+
+function bindSortHandlers() {
+  state.tableRegistry.forEach(function (meta, domId) {
+    const table = el(domId);
+    if (!table) return;
+    table.querySelectorAll('th.sortable').forEach(function (th) {
+      const key = th.getAttribute('data-sort');
+      if (key === 'quad' || key === 'interp' || key === 'parent' || key === 'Rstatus') return;
+      function doSort() {
+        const list = listById(currentResult(), meta.listId);
+        if (!list) return;
+        const st = getSort(list);
+        if (st.key === key) st.dir = st.dir === 'asc' ? 'desc' : 'asc';
+        else { st.key = key; st.dir = 'asc'; }
+        refreshTable(domId, meta.listId);
+      }
+      th.addEventListener('click', doSort);
+      th.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doSort(); }
+      });
+    });
+  });
+}
+
+function refreshTable(domId, listId) {
+  const list = listById(currentResult(), listId);
+  const table = el(domId);
+  if (!list || !table) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = tableHTML(list, listId);
+  const fresh = tmp.querySelector('table');
+  table.replaceWith(fresh);
+  const meta = state.tableRegistry.get(domId) || { listId: listId };
+  state.tableRegistry.set(domId, meta);
+  bindSortHandlersOne(domId);
+}
+
+function bindSortHandlersOne(domId) {
+  const table = el(domId);
+  if (!table) return;
+  const meta = state.tableRegistry.get(domId);
+  if (!meta) return;
+  table.querySelectorAll('th.sortable').forEach(function (th) {
+    const key = th.getAttribute('data-sort');
+    if (key === 'quad' || key === 'interp' || key === 'parent' || key === 'Rstatus') return;
+    function doSort() {
+      const list = listById(currentResult(), meta.listId);
+      if (!list) return;
+      const st = getSort(list);
+      if (st.key === key) st.dir = st.dir === 'asc' ? 'desc' : 'asc';
+      else { st.key = key; st.dir = 'asc'; }
+      refreshTable(domId, meta.listId);
+    }
+    th.addEventListener('click', doSort);
+    th.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); doSort(); }
+    });
+  });
+}
+/* ============================ 结果区渲染 ============================ */
+function warningSummary() {
+  const clean = state.clean;
+  const s = clean.stats;
+  const rejectCount = s.emptyCategory + s.shareMissing + s.shareInvalid +
+    s.tgiMissing + s.tgiNegative + s.nonStandardBlock + s.zeroValue + s.duplicate;
+  const tgiAbnormal = s.tgiNegative + s.tgiZeroMark;
+  const categories = [];
+  const details = [];
+  if (rejectCount > 0) { categories.push('剔除'); details.push('清洗各步存在剔除记录（按首次命中步骤归因）'); }
+  if (tgiAbnormal > 0) { categories.push('TGI 异常'); details.push('TGI 异常共 ' + tgiAbnormal + ' 条（负数 ' + s.tgiNegative + '，零值标记 ' + s.tgiZeroMark + '）'); }
+  if (s.parentDup > 0) { categories.push('父类重复'); details.push('父类重复记录 ' + s.parentDup + ' 条'); }
+  if (clean.fieldMatch.duplicates.length > 0) { categories.push('字段名重复'); details.push('存在重复表头字段'); }
+  if (s.dateWarnings > 0) { categories.push('日期字段警告'); details.push('日期单元格 ' + s.dateWarnings + ' 个'); }
+  const missingCount = clean.blocksMissing.length;
+  return {
+    show: missingCount > 0 || categories.length > 0,
+    missingCount: missingCount,
+    categoryCount: categories.length,
+    categories: categories,
+    details: details
+  };
+}
+
+function warnBannerHTML() {
+  const w = warningSummary();
+  if (!w.show) return '';
+  let text = '';
+  if (w.missingCount > 0) text += '存在 ' + w.missingCount + ' 个缺失区块';
+  if (w.categoryCount > 0) text += (text ? '、' : '存在 ') + w.categoryCount + ' 类数据质量问题';
+  return '<div class="warn-banner" role="status" aria-live="polite">' +
+    '<details><summary>' + esc(text + '，请查看数据质量说明') + '</summary>' +
+    '<ul class="plain-list">' + w.categories.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') +
+    '</ul></details></div>';
+}
+
+function blockNOf(result, blockName) {
+  for (let i = 0; i < result.blockLists.length; i++) {
+    if (result.blockLists[i].name === blockName) return result.blockLists[i].n;
+  }
+  return 0;
+}
+
+function overviewHTML(result) {
+  const clean = state.clean;
+  const kw = state.hasKeywordField ? (result.keyword === UNLABELED_KW ? '未标注关键词' : result.keyword) : (clean.derivedKeyword || SINGLE_KW);
+  return '<section class="card" id="card-overview">' +
+    '<div class="card-head"><h2>总览摘要</h2><span class="meta">当前关键词：' + esc(kw) + '</span></div>' +
+    warnBannerHTML() +
+    '<div class="metric-grid">' +
+    '<div class="metric"><div class="num">' + esc(kw) + '</div><div class="lab">当前关键词</div></div>' +
+    '<div class="metric"><div class="num">' + clean.kept.length + '</div><div class="lab">有效记录总数</div><div class="sub">清洗保留</div></div>' +
+    '<div class="metric"><div class="num">' + clean.blocksPresent.length + '</div><div class="lab">存在区块数</div><div class="sub">含 n=0 区块</div></div>' +
+    '<div class="metric"><div class="num">' + clean.blocksMissing.length + '</div><div class="lab">缺失区块数</div><div class="sub">共 ' + STANDARD_BLOCK_COUNT + ' 个标准区块</div></div>' +
+    '<div class="metric"><div class="num">' + result.superCount + '</div><div class="lab">R&gt;100% 记录数</div><div class="sub">二级混合总榜超常发挥</div></div>' +
+    '</div></section>';
+}
+
+function anomalyDetails(label, statsKey, clean) {
+  const items = clean.anomalies[statsKey] || [];
+  let count = Number(clean.stats[statsKey] || 0);
+  if (statsKey === 'keywordNullRatio') count = items.length ? 1 : 0;
+  if (statsKey === 'extraCols') count = clean.stats.extraCols || 0;
+  let extra = '';
+  if (statsKey === 'shareConverted' && clean.samples.shareConverted.length) {
+    extra = '<div class="truncate">原值样本：' + esc(clean.samples.shareConverted.join('、')) + '</div>';
+  }
+  if (statsKey === 'tgiPct' && clean.samples.tgiPct.length) {
+    extra = '<div class="truncate">原值样本：' + esc(clean.samples.tgiPct.join('、')) + '</div>';
+  }
+  const shown = items.slice(0, LIST_TRUNCATE);
+  let body = '';
+  if (shown.length) {
+    body = '<ul>' + shown.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+    if (shown.length >= LIST_TRUNCATE && count > shown.length) {
+      body += '<div class="truncate">仅展示前 ' + LIST_TRUNCATE + ' 条</div>';
+    }
+  }
+  return '<details class="anomaly"><summary><span>' + esc(label) + '</span><span class="cnt">' + count + ' 条</span></summary>' + body + extra +
+    (body || extra ? '' : '<div class="truncate">无记录</div>') + '</details>';
+}
+
+function qualityHTML(result) {
+  const clean = state.clean;
+  const fm = clean.fieldMatch;
+  const matchedLine = fm.matched.map(function (m) {
+    return '<span class="badge ok">' + esc(m.label) + ' → 列 ' + (m.col + 1) + '「' + esc(m.text) + '」</span>';
+  }).join(' ');
+  const unmatchedLine = fm.hasKeywordField ? '无'
+    : (clean.derivedKeyword
+      ? '<span class="badge ok">关键词（未提供，取自文件名）：' + esc(clean.derivedKeyword) + '</span>'
+      : '<span class="badge warn">关键词（未提供，按单关键词处理）</span>');
+  const dupLine = fm.duplicates.length ? fm.duplicates.map(function (d) { return '<span class="badge warn">' + esc(d) + '</span>'; }).join(' ') : '无';
+  const dateLine = clean.stats.dateWarnings > 0 ? '<span class="badge warn">日期字段警告：' + clean.stats.dateWarnings + ' 处已格式化为 YYYY-MM-DD</span>' : '无';
+
+  const presentList = clean.blocksPresent.map(function (b) {
+    const n = blockNOf(result, b);
+    return '<li class="ok">✓ ' + esc(b) + (n === 0 ? '（n=0）' : '（n=' + n + '）') + '</li>';
+  }).join('');
+  const missingList = clean.blocksMissing.map(function (b) {
+    return '<li class="miss">✗ ' + esc(b) + '（未提供数据，跳过该区块排名）</li>';
+  }).join('');
+
+  const statRows = [
+    ['空分类记录', clean.stats.emptyCategory],
+    ['占比缺失', clean.stats.shareMissing],
+    ['占比异常', clean.stats.shareInvalid],
+    ['占比自动转换', clean.stats.shareConverted],
+    ['TGI 缺失', clean.stats.tgiMissing],
+    ['TGI 异常（负数）', clean.stats.tgiNegative],
+    ['TGI 带百分号', clean.stats.tgiPct],
+    ['非标准区块', clean.stats.nonStandardBlock],
+    ['零值剔除', clean.stats.zeroValue],
+    ['TGI 异常（零值标记）', clean.stats.tgiZeroMark],
+    ['重复记录', clean.stats.duplicate],
+    ['父类重复', clean.stats.parentDup],
+    ['多余单元格已忽略', clean.stats.extraCols]
+  ].map(function (row) {
+    return '<tr class="' + (row[1] > 0 ? '' : 'zero') + '"><td>' + esc(row[0]) + '</td><td class="num">' + row[1] + '</td></tr>';
+  }).join('');
+
+  const hasUnderscore = clean.hasUnderscore;
+  const extraHints = [];
+  if (hasUnderscore) extraHints.push('检测到含下划线的分类按二级类目处理，需人工确认。');
+  if (clean.meta && clean.meta.merges) extraHints.push('检测到合并单元格，仅保留左上角值。');
+  extraHints.push('剔除原因按首次命中步骤归因；非标准区块计数仅统计占比/TGI 可解析的记录。');
+
+  function unavailableSection(label, kind) {
+    const total = result.unavailable[kind + 'Total'];
+    const items = result.unavailable[kind];
+    let body;
+    if (items.length) {
+      body = '<ul>' + items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+      if (total > items.length) body += '<div class="truncate">仅展示前 ' + LIST_TRUNCATE + ' 条</div>';
+    } else {
+      body = '<div class="truncate">无记录</div>';
+    }
+    return '<details class="anomaly"><summary><span>' + esc(label) + '</span><span class="cnt">' + total +
+      ' 条</span></summary>' + body + '</details>';
+  }
+
+  const unavailableHTML =
+    '<div class="sub-title">R 无法计算清单</div>' +
+    unavailableSection('父类重复', 'dup') +
+    unavailableSection('父类缺失', 'missing') +
+    unavailableSection('父类占比为 0', 'zero');
+
+  return '<section class="card" id="card-quality">' +
+    '<div class="card-head"><h2>数据质量说明</h2><span class="meta">文件共 ' + clean.totalRecords + ' 行，清洗保留 ' + clean.kept.length + ' 条</span></div>' +
+    '<div class="kv"><span class="k">已匹配字段</span>' + (matchedLine || '无') + '</div>' +
+    '<div class="kv"><span class="k">未匹配可选字段</span>' + unmatchedLine + '</div>' +
+    '<div class="kv"><span class="k">重复字段警告</span>' + dupLine + '</div>' +
+    '<div class="kv"><span class="k">空表头列</span><span class="badge">' + fm.emptyHeaderCols + ' 列</span>' +
+    '<span class="k">日期字段警告</span>' + dateLine + '</div>' +
+    extraHints.map(function (h) { return '<div class="card-note">' + esc(h) + '</div>'; }).join('') +
+    '<div class="sub-title">区块覆盖情况</div>' +
+    '<div class="block-coverage">' +
+    '<div class="coverage-list"><div class="t">存在区块（' + clean.blocksPresent.length + '）</div><ul>' + (presentList || '<li class="miss">无</li>') + '</ul></div>' +
+    '<div class="coverage-list"><div class="t">缺失区块（' + clean.blocksMissing.length + '）</div><ul>' + (missingList || '<li class="ok">无</li>') + '</ul></div>' +
+    '</div>' +
+    '<div class="sub-title">清洗统计</div>' +
+    '<div class="table-wrap" style="max-height:340px"><table class="stats-table"><thead><tr><th>统计项</th><th style="text-align:right">数量</th></tr></thead><tbody>' + statRows + '</tbody></table></div>' +
+    '<div class="sub-title">异常清单</div>' +
+    anomalyDetails('空分类记录', 'emptyCategory', clean) +
+    anomalyDetails('占比缺失', 'shareMissing', clean) +
+    anomalyDetails('占比异常', 'shareInvalid', clean) +
+    anomalyDetails('占比自动转换', 'shareConverted', clean) +
+    anomalyDetails('TGI 缺失', 'tgiMissing', clean) +
+    anomalyDetails('TGI 异常（负数）', 'tgiNegative', clean) +
+    anomalyDetails('TGI 带百分号', 'tgiPct', clean) +
+    anomalyDetails('非标准区块', 'nonStandardBlock', clean) +
+    anomalyDetails('零值剔除', 'zeroValue', clean) +
+    anomalyDetails('TGI 异常（零值标记）', 'tgiZeroMark', clean) +
+    anomalyDetails('重复记录', 'duplicate', clean) +
+    anomalyDetails('父类重复', 'parentDup', clean) +
+    anomalyDetails('多余单元格已忽略', 'extraCols', clean) +
+    anomalyDetails('日期字段警告', 'dateWarnings', clean) +
+    anomalyDetails('关键词空值比例过高', 'keywordNullRatio', clean) +
+    unavailableHTML +
+    '</section>';
+}
+
+function methodHTML() {
+  return '<section class="card method" id="card-method">' +
+    '<div class="card-head"><h2>方法参数说明</h2><span class="meta">固定口径，页面不可调</span></div>' +
+    '<dl>' +
+    '<dt>标准化方法（稳健标准化）</dt><dd>规模指标（原始占比）与偏好指标（原始 TGI）在各榜内分别做中位数 + IQR 稳健标准化：S = clamp(50 + 25×(x − 中位数) / IQR, 0, 100)。中位数映射 50 分，每 1 个 IQR 记 25 分（Q1 → 37.5、Q3 → 62.5）；超出 ±2 个 IQR（Tukey 栅栏外侧）的极端值截断为 0 或 100。IQR = Q3 − Q1（线性插值分位数）；若 IQR 为 0（该维取值全相同），该维统一记 50 分，且该维不参与四象限判定（不把全榜判为“高”）。</dd>' +
+    '<dt>两维等权</dt><dd>S 与 P 各占 50%（等权系数 0.5，不是业务拍定的权重）。稳健标准化保留“领先幅度”，同时让两维的离散度一致，因此量纲不同也能等权合成；原始量纲不可直接等权（区块间占比跨度差异极大）。</dd>' +
+    '<dt>综合得分</dt><dd>综合得分 = 0.5 × S + 0.5 × P，使用未舍入 S、P 计算；分数表达榜内相对水平（50 = 本榜中位水平），不是绝对优劣，跨榜不可比。</dd>' +
+    '<dt>四象限阈值</dt><dd>按各榜 S 中位数、P 中位数划分（榜内相对口径）：S ≥ S 中位数为高规模，P ≥ P 中位数为高偏好；HH 重点机会、HL 规模驱动需提升偏好、LH 偏好驱动适合精准渗透、LL 优先级较低；TGI &gt; 100 额外标注“偏好高于大盘”。若 S 或 P 任一维无差异（IQR=0），该榜不判定四象限，显示“该维无差异”。</dd>' +
+    '<dt>有效记录数分档</dt><dd>n ≥ 4 正常计算；2 ≤ n &lt; 4 正常计算并标注“样本较少，仅参考”；n &lt; 2 不计算 S/P/综合得分/排名/四象限，显示“—”“样本不足”。</dd>' +
+    '<dt>排名排序规则</dt><dd>综合得分降序 → 原始占比降序 → TGI 降序 → 分类名升序 → 原始行号升序；排名为顺序整数，不共享名次。</dd>' +
+    '<dt>基准选择</dt><dd>采用榜内稳健标准化，而非固定基准：固定基准需要多关键词历史分布语料，当前只有单关键词数据，无法给出稳定外部基准；榜内稳健标准化只依赖本榜，规则固定、可复现。若后续提供基准语料，可把中位数/IQR 换成基准的中位数/IQR，等权公式不变。</dd>' +
+    '<dt>记录口径</dt><dd>清洗保留记录 = 通过步骤 1–9 的记录（含 TGI 异常零值标记、父类重复、R 无法计算记录）；榜单有效记录 = 各榜可参与排名计算的记录（分区块榜排除 TGI 异常，内容浏览一级榜另排除父类重复，二级混合总榜再排除 R 无法计算记录）。</dd>' +
+    '<dt>占比口径</dt><dd>占比 = 1 视为 100%（0 &lt; 值 ≤ 1 直接使用）；带 % 的占比按百分比换算；1 &lt; 值 ≤ 100 视为疑似未带 %，自动除以 100 并计入“占比自动转换”。</dd>' +
+    '<dt>TGI 口径</dt><dd>TGI 带百分号（如 “120%”）已去除 % 并按数值 120 使用，请确认源数据口径。</dd>' +
+    '</dl></section>';
+}
+
+function blockHint(blockName) {
+  if (blockName === '手机价格分布') return '排名不等于价格高低评价。';
+  if (blockName === '性别分布') return '类别数少，排名按两维等权综合得分，不解读性别优劣。';
+  if (blockName === '手机品牌分布') return '仅反映该人群规模与偏好，不解读品牌优劣。';
+  return '';
+}
+
+function blockCardsHTML(result) {
+  let html = '<section id="card-blocks"><div class="sub-title" style="font-size:16px;margin:4px 0 12px">分区块综合排名</div>';
+  let anyCard = false;
+  result.blockLists.forEach(function (list) {
+    if (state.clean.blocksPresent.indexOf(list.name) === -1) return;
+    anyCard = true;
+    let metaText = '';
+    if (list.n === 0) metaText = '该区块无榜单有效记录（n=0）';
+    else if (list.n <= RANK_DISPLAY_LIMIT) metaText = '榜单有效记录 ' + list.n + ' 条，展示全部 ' + list.n + ' 条';
+    else metaText = '榜单有效记录 ' + list.n + ' 条，展示 Top' + RANK_DISPLAY_LIMIT;
+    const hint = blockHint(list.name);
+    html += '<div class="card" style="margin-bottom:16px">' +
+      '<div class="card-head"><h2>' + esc(list.name) + '</h2><span class="meta">' + metaText + '</span></div>' +
+      (hint ? '<div class="hint-bar">' + esc(hint) + '</div>' : '') +
+      (list.n === 0 ? '<div class="card-note">该区块无榜单有效记录（n=0）</div>' : tableHTML(list, list.id)) +
+      '</div>';
+  });
+  if (!anyCard) html += '<div class="card"><div class="card-note">所有标准区块均缺失数据。</div></div>';
+  return html + '</section>';
+}
+
+function mixedHTML(result) {
+  if (!result.hasMixed) return '';
+  const list = result.mixed;
+  return '<section class="card" id="card-mixed">' +
+    '<div class="card-head"><h2>二级混合总榜</h2><span class="meta">榜单有效记录 ' + list.n + ' 条' +
+    (list.n > RANK_DISPLAY_LIMIT ? '，展示 Top' + RANK_DISPLAY_LIMIT : '，展示全部 ' + list.n + ' 条') + '</span></div>' +
+    '<div class="hint-bar">本榜为混合总榜，前排可能被超常发挥记录占据，基本盘请结合 R 状态列判断。</div>' +
+    tableHTML(list, list.id) +
+    '</section>';
+}
+
+function renderResults() {
+  if (slowTimer) {
+    clearTimeout(slowTimer);
+    slowTimer = null;
+  }
+  state.domIdMap = new Map();
+  state.tableRegistry = new Map();
+  const result = currentResult();
+  const nav = el('resultNav');
+  const results = el('results');
+  if (!result) {
+    teardownNav();
+    results.innerHTML = '<div class="empty-state" id="emptyState">请上传数据文件后开始分析</div>';
+    nav.hidden = true;
+    return;
+  }
+  let idx = 0;
+  result.blockLists.forEach(function (l) {
+    if (state.clean.blocksPresent.indexOf(l.name) === -1) return;
+    state.domIdMap.set(l.id, 'tbl-' + idx++);
+  });
+  if (result.hasMixed) state.domIdMap.set(result.mixed.id, 'tbl-' + idx++);
+
+  results.innerHTML = overviewHTML(result) + qualityHTML(result) + methodHTML() +
+    blockCardsHTML(result) + mixedHTML(result);
+
+  state.domIdMap.forEach(function (domId, listId) {
+    state.tableRegistry.set(domId, { listId: listId });
+  });
+  bindSortHandlers();
+  setupNav(result.hasMixed);
+  refreshSticky();
+}
+
+/* ============================ 导航与吸顶偏移 ============================ */
+function stickyOffset() {
+  const topbar = document.querySelector('.topbar');
+  const control = el('control');
+  const nav = el('resultNav');
+  return (topbar ? topbar.offsetHeight : 56) + (control ? control.offsetHeight : 0) + (nav ? nav.offsetHeight : 0);
+}
+
+function refreshSticky() {
+  const topbar = document.querySelector('.topbar');
+  const control = el('control');
+  const height = (topbar ? topbar.offsetHeight : 56) + (control ? control.offsetHeight : 0);
+  document.documentElement.style.setProperty('--sticky-h', height + 'px');
+}
+
+function teardownNav() {
+  if (state.activeNavObserver) {
+    state.activeNavObserver.disconnect();
+    state.activeNavObserver = null;
+  }
+}
+
+function setupNav(hasMixed) {
+  const nav = el('resultNav');
+  const mixedLink = nav.querySelector('a[data-target="card-mixed"]');
+  mixedLink.style.display = hasMixed ? '' : 'none';
+  const visible = hasMixed ? 5 : 4;
+  nav.hidden = false;
+
+  const targets = [];
+  for (let i = 0; i < visible; i++) {
+    const a = nav.querySelectorAll('a')[i];
+    const id = a.getAttribute('data-target');
+    const node = el(id);
+    if (node) targets.push(node);
+  }
+  teardownNav();
+  const offset = stickyOffset() + 8;
+  state.activeNavObserver = new IntersectionObserver(function (entries) {
+    let best = null;
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      if (!best || entry.intersectionRatio > best.intersectionRatio) best = entry;
+    });
+    if (best) setActiveNav(best.target.id);
+  }, { rootMargin: '-' + offset + 'px 0px -55% 0px', threshold: [0, 0.05, 0.2, 0.5, 1] });
+  targets.forEach(function (t) { state.activeNavObserver.observe(t); });
+  const first = targets[0];
+  if (first) setActiveNav(first.id);
+}
+
+function setActiveNav(id) {
+  el('resultNav').querySelectorAll('a').forEach(function (a) {
+    a.classList.toggle('active', a.getAttribute('data-target') === id);
+  });
+}
+
+/* ============================ 加载态 ============================ */
+let slowTimer = null;
+function showLoading(keepPrevious) {
+  const results = el('results');
+  const nav = el('resultNav');
+  if (keepPrevious && state.clean) {
+    if (!el('loadingBar')) {
+      results.insertAdjacentHTML('afterbegin',
+        '<div class="card" id="loadingBar"><div class="loading" aria-busy="true"><span class="spinner"></span>' +
+        '<span id="loadingText">正在分析…</span></div><div class="progress-track"><div class="progress-bar" style="width:35%"></div></div></div>');
+    }
+  } else {
+    /* 骨架屏会替换整个结果区，旧导航目标已失效，先解绑 observer 防止泄漏 */
+    teardownNav();
+    nav.hidden = true;
+    results.innerHTML = '<div class="card skeleton" aria-busy="true"><div class="loading"><span class="spinner"></span>' +
+      '<span id="loadingText">正在解析…</span></div><div class="progress-track"><div class="progress-bar"></div></div>' +
+      '<div class="sk-line" style="width:60%"></div><div class="sk-line" style="width:90%"></div>' +
+      '<div class="sk-line" style="width:80%"></div><div class="sk-line" style="width:70%"></div></div>';
+  }
+  if (slowTimer) clearTimeout(slowTimer);
+  slowTimer = setTimeout(function () {
+    const t = el('loadingText');
+    if (t) t.textContent = '处理中，请稍候…';
+  }, 5000);
+}
+/* ============================ 主流程 ============================ */
+const CDN_OK = true;
+
+function keywordOptionLabel(kw) {
+  return kw === UNLABELED_KW ? '（未标注，建议核查源数据）' : kw;
+}
+
+function setupKeywordUI() {
+  const row = el('kwRow');
+  const sel = el('kwSelect');
+  if (!state.hasKeywordField) {
+    row.hidden = true;
+    sel.innerHTML = '';
+    return;
+  }
+  row.hidden = false;
+  sel.innerHTML = state.keywords.map(function (k) {
+    return '<option value="' + esc(k) + '">' + esc(keywordOptionLabel(k)) + '</option>';
+  }).join('');
+  const normal = state.keywords.filter(function (k) { return k !== UNLABELED_KW; }).length;
+  let text = '共 ' + normal + ' 个关键词';
+  if (state.keywords.indexOf(UNLABELED_KW) !== -1) text += '，另有未标注关键词';
+  el('kwCount').textContent = text;
+}
+
+function scrollToResultsTop() {
+  const results = el('results');
+  const top = results.getBoundingClientRect().top + window.scrollY - stickyOffset() - 8;
+  window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+}
+
+function analyzeKeyword(kw, opts) {
+  opts = opts || {};
+  state.currentKeyword = kw;
+  if (state.hasKeywordField) el('kwSelect').value = kw;
+  const cached = state.resultCache.get(kw);
+  if (cached) {
+    setStatus('success');
+    renderResults();
+    if (opts.resetScroll) scrollToResultsTop();
+    return;
+  }
+  const keepPrevious = !!document.querySelector('#results #card-overview');
+  setStatus('analyzing');
+  showLoading(keepPrevious);
+  const token = state.generation;
+  setTimeout(function () {
+    if (token !== state.generation || state.currentKeyword !== kw) return;
+    const result = buildKeywordResult(kw);
+    state.resultCache.set(kw, result);
+    setStatus('success');
+    renderResults();
+    if (opts.resetScroll) scrollToResultsTop();
+  }, 0);
+}
+
+function processTable(table) {
+  state.parsed = table;
+  if (!table.headerRow || table.headerRow.length === 0 ||
+      table.headerRow.every(function (h) { return blankText(h); })) {
+    showError('未检测到有效表头，请检查文件第一行是否为字段名。');
+    setStatus('error');
+    return;
+  }
+  if (table.dataRows.length === 0) {
+    showError('文件无数据行，请检查文件内容。');
+    setStatus('error');
+    return;
+  }
+  const fm = matchFields(table.headerRow);
+  if (fm.missing.length) {
+    showError('缺少必需字段：' + fm.missing.join('、') + '。请检查表头命名后重试。');
+    setStatus('error');
+    return;
+  }
+  const clean = cleanData(table, fm);
+  const kws = Array.from(clean.countByKeyword.keys());
+  if (kws.length === 0) {
+    /* 先不写入 state.clean：否则关闭错误条时会被误判为“已完成” */
+    showError('清洗后无有效记录，请检查数据内容。');
+    setStatus('error');
+    return;
+  }
+  state.clean = clean;
+  state.hasKeywordField = fm.hasKeywordField;
+  const ordered = kws.filter(function (k) { return k !== UNLABELED_KW; })
+    .sort(function (a, b) { return collator().compare(a, b); });
+  if (kws.indexOf(UNLABELED_KW) !== -1) ordered.push(UNLABELED_KW);
+  state.keywords = ordered;
+  state.resultCache = new Map();
+  state.sortState = new Map();
+  setupKeywordUI();
+  analyzeKeyword(ordered[0], { resetScroll: true });
+}
+
+function resetForNewData() {
+  state.parsed = null;
+  state.clean = null;
+  state.hasKeywordField = false;
+  state.keywords = [];
+  state.currentKeyword = '';
+  state.resultCache = new Map();
+  state.sortState = new Map();
+  /* 清理上一份数据的渲染状态：目录观察器与表格映射，避免持有旧 DOM 引用 */
+  teardownNav();
+  state.domIdMap = new Map();
+  state.tableRegistry = new Map();
+  if (slowTimer) {
+    clearTimeout(slowTimer);
+    slowTimer = null;
+  }
+  el('kwRow').hidden = true;
+  el('kwSelect').innerHTML = '';
+  el('kwCount').textContent = '';
+}
+
+async function handleFile(file) {
+  if (!CDN_OK) {
+    showToast('依赖库加载失败，无法解析文件，请检查网络后刷新页面。');
+    return;
+  }
+  const name = file && file.name ? file.name : '';
+  const ext = name.indexOf('.') !== -1 ? name.split('.').pop().toLowerCase() : '';
+  if (file.size === 0) {
+    showError('文件为空（0 字节），请重新选择。');
+    setStatus('error');
+    return;
+  }
+  if (['csv', 'xlsx', 'xls', 'json'].indexOf(ext) === -1) {
+    showError('不支持的文件格式：' + (ext ? '.' + ext : '(未知)') + '，仅支持 .csv、.xlsx、.xls、.json。');
+    setStatus('error');
+    return;
+  }
+  if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+    showToast('文件较大，解析可能较慢，建议拆分后上传');
+  }
+  const token = ++state.generation;
+  state.file = file;
+  resetForNewData();
+  clearError();
+  setStatus('parsing');
+  showLoading(false);
+
+  let table = null;
+  try {
+    if (ext === 'csv') {
+      const buf = await readArrayBuffer(file);
+      if (token !== state.generation) return;
+      const info = decodeUtf8(buf);
+      const enc = checkEncoding(info, 'csv');
+      if (enc) throw enc;
+      const rows = await parseCsv(info.text);
+      if (token !== state.generation) return;
+      table = buildTable(rows, { source: 'CSV', fileName: name });
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      const buf = await readArrayBuffer(file);
+      if (token !== state.generation) return;
+      const res = await parseExcel(buf);
+      if (token !== state.generation) return;
+      table = buildTable(res.rows, { source: 'Excel', fileName: name, sheetName: res.sheetName, merges: res.merges });
+    } else {
+      const buf = await readArrayBuffer(file);
+      if (token !== state.generation) return;
+      const info = decodeUtf8(buf);
+      const enc = checkEncoding(info, 'json');
+      if (enc) throw enc;
+      let obj;
+      try {
+        obj = JSON.parse(info.text);
+      } catch (e) {
+        throw err('JSON_PARSE', 'JSON 解析失败：' + String(e.message || e) + '。');
+      }
+      const rows = jsonToRows(obj);
+      table = buildTable(rows, { source: 'JSON', fileName: name });
+    }
+  } catch (e) {
+    if (e && e.aborted) return;
+    if (token !== state.generation) return;
+    showError((e && e.message) ? e.message : '解析失败，请检查文件内容。');
+    setStatus('error');
+    return;
+  }
+  if (token !== state.generation) return;
+  processTable(table);
+}
+
+function loadSample() {
+  if (state.file && !window.confirm('加载示例数据将覆盖当前文件与结果，是否继续？')) return;
+  const token = ++state.generation;
+  const sample = makeSampleTable();
+  state.file = { name: '内置示例数据', size: 0, sample: true };
+  resetForNewData();
+  clearError();
+  setStatus('parsing');
+  showLoading(false);
+  setTimeout(function () {
+    if (token !== state.generation) return;
+    const table = buildTable([sample.headerRow].concat(sample.dataRows), {
+      source: sample.meta.source,
+      fileName: sample.meta.source
+    });
+    processTable(table);
+  }, 0);
+}
+
+function clearAll() {
+  state.generation += 1;
+  if (state.activeReader) {
+    try { state.activeReader.abort(); } catch (e) { /* ignore */ }
+    state.activeReader = null;
+  }
+  state.file = null;
+  resetForNewData();
+  teardownNav();
+  clearError();
+  el('results').innerHTML = '<div class="empty-state" id="emptyState">请上传数据文件后开始分析</div>';
+  el('resultNav').hidden = true;
+  el('fileInput').value = '';
+  el('fileInfo').textContent = '尚未选择文件';
+  setStatus('idle');
+}
+
+/* ============================ 导出 CSV ============================ */
+function csvCell(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number' && !isFinite(v)) return '';
+  let s = String(v);
+  /* 先中和公式注入（前置单引号），再按需包裹双引号；
+     顺序反了会生成 '"=a,b"' 这类非法 CSV 字段 */
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+function buildExportRecords(result) {
+  const out = [];
+  result.blockLists.forEach(function (list) {
+    if (!state.clean.blocksPresent.some(function (b) { return b === list.name; })) return;
+    list.rows.forEach(function (row) {
+      out.push({
+        keyword: result.keyword,
+        listName: '分区块综合排名',
+        group: list.name,
+        name: row.name,
+        share: formatShare(row.share),
+        tgi: numText(row.tgi),
+        R: '',
+        Rstatus: '',
+        S: list.hasRank ? fmt(row.S, 1) : '',
+        P: list.hasRank ? fmt(row.P, 1) : '',
+        composite: list.hasRank ? fmt(row.composite, 2) : '',
+        rank: list.hasRank && row.rank !== null ? String(row.rank) : '',
+        quad: list.hasRank ? row.qText + (list.smallSample ? '（样本较少）' : '') : '',
+        interp: row.interp === '—' ? '' : row.interp
+      });
+    });
+  });
+  if (result.hasMixed) {
+    result.mixed.rows.forEach(function (row) {
+      out.push({
+        keyword: result.keyword,
+        listName: '二级混合总榜',
+        group: row.parentName || '',
+        name: row.name,
+        share: formatShare(row.share),
+        tgi: numText(row.tgi),
+        R: isFiniteNumber(row.R) ? fmt(row.R, 1) + '%' : '',
+        Rstatus: row.Rstatus || '',
+        S: fmt(row.S, 1),
+        P: fmt(row.P, 1),
+        composite: fmt(row.composite, 2),
+        rank: row.rank === null ? '' : String(row.rank),
+        quad: row.qText + (result.mixed.smallSample ? '（样本较少）' : ''),
+        interp: row.interp === '—' ? '' : row.interp
+      });
+    });
+  }
+  return out;
+}
+
+function exportLine(rec) {
+  return [rec.keyword, rec.listName, rec.group, rec.name, rec.share, rec.tgi, rec.R, rec.Rstatus,
+    rec.S, rec.P, rec.composite, rec.rank, rec.quad, rec.interp].map(csvCell).join(',');
+}
+
+function exportProgressNode(show, pct) {
+  let node = el('exportProgress');
+  if (!show) {
+    if (node) node.remove();
+    return;
+  }
+  if (!node) {
+    node = document.createElement('div');
+    node.id = 'exportProgress';
+    node.className = 'card';
+    node.innerHTML = '<div class="loading"><span class="spinner"></span><span>正在导出…</span></div>' +
+      '<div class="progress-track"><div class="progress-bar" style="width:0"></div></div>';
+    el('results').insertAdjacentElement('afterbegin', node);
+  }
+  const bar = node.querySelector('.progress-bar');
+  if (bar) bar.style.width = pct + '%';
+}
+
+async function exportCSV() {
+  const result = currentResult();
+  if (!result || !hasValidRecords()) {
+    showToast('当前关键词无有效数据，无法导出。');
+    return;
+  }
+  const token = { gen: state.generation, keyword: state.currentKeyword };
+  const records = buildExportRecords(result);
+  if (records.length === 0) {
+    showToast('当前关键词无有效数据，无法导出。');
+    return;
+  }
+  const total = records.length;
+  const useBatches = total > EXPORT_PROGRESS_ROWS;
+  if (useBatches) exportProgressNode(true, 0);
+  const HEADERS = ['关键词', '榜单名称', '分组名', '分类名', '原始占比', '原始TGI', 'R', 'R状态',
+    '规模分S（稳健标准化）', '偏好分P（稳健标准化）', '综合得分（稳健等权）', '榜单内排名', '四象限标签', '一句解读'];
+  const parts = [HEADERS.map(csvCell).join(',')];
+  const batchSize = 2000;
+  let aborted = false;
+  for (let i = 0; i < total; i += batchSize) {
+    if (token.gen !== state.generation || token.keyword !== state.currentKeyword) {
+      aborted = true;
+      break;
+    }
+    const batch = records.slice(i, i + batchSize);
+    parts.push(batch.map(exportLine).join('\n'));
+    if (useBatches) {
+      exportProgressNode(true, Math.round(Math.min(1, (i + batch.length) / total) * 100));
+      await new Promise(function (r) { setTimeout(r, 0); });
+    }
+  }
+  exportProgressNode(false, 0);
+  if (aborted) return;
+  const csv = '\uFEFF' + parts.join('\n');
+  const safeName = String(state.currentKeyword || 'result').replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_').slice(0, 80) || 'result';
+  const fileName = 'keyword-ranking-' + safeName + '.csv';
+  /* WebView 内 <a download> 不会真正落盘，优先交给原生桥写入系统下载目录；
+     在普通浏览器打开时退回 Blob 下载。 */
+  if (window.DyRankingBridge && typeof window.DyRankingBridge.exportCsv === 'function') {
+    try {
+      window.DyRankingBridge.exportCsv(csv, fileName);
+      showToast('已导出到系统下载目录：' + fileName);
+      return;
+    } catch (e) { /* 桥调用失败时退回浏览器下载 */ }
+  }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+}
+
+/* ============================ 交互事件 ============================ */
+function setCollapsed(collapsed) {
+  state.collapsed = collapsed;
+  el('control').classList.toggle('collapsed', collapsed);
+  el('controlSummary').classList.toggle('show', collapsed);
+  el('collapseBtn').textContent = collapsed ? '展开控制区' : '收起控制区';
+  el('collapseBtn').setAttribute('aria-expanded', String(!collapsed));
+  refreshSticky();
+  if (state.status === 'success' && currentResult()) setupNav(currentResult().hasMixed);
+}
+
+function pickFile() {
+  if (!CDN_OK) {
+    showToast('依赖库加载失败，无法解析文件，请检查网络后刷新页面。');
+    return;
+  }
+  el('fileInput').click();
+}
+
+function onFilesChosen(files) {
+  if (!files || files.length === 0) return;
+  if (files.length > 1) showToast('一次只能上传一个文件，已取第一个');
+  handleFile(files[0]);
+  el('fileInput').value = '';
+}
+
+function bindEvents() {
+  el('pickBtn').addEventListener('click', pickFile);
+  el('fileInput').addEventListener('change', function (e) {
+    onFilesChosen(e.target.files);
+  });
+
+  const dz = el('dropzone');
+  dz.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    if (CDN_OK && state.status !== 'parsing' && state.status !== 'analyzing') dz.classList.add('drag');
+  });
+  dz.addEventListener('dragleave', function () { dz.classList.remove('drag'); });
+  dz.addEventListener('drop', function (e) {
+    e.preventDefault();
+    dz.classList.remove('drag');
+    if (!CDN_OK) { showToast('依赖库加载失败，无法解析文件，请检查网络后刷新页面。'); return; }
+    if (state.status === 'parsing' || state.status === 'analyzing') return;
+    onFilesChosen(e.dataTransfer.files);
+  });
+
+  el('sampleBtn').addEventListener('click', loadSample);
+  el('reanalyzeBtn').addEventListener('click', function () {
+    if (!state.clean) { showToast('请先上传数据文件'); return; }
+    state.resultCache.delete(state.currentKeyword);
+    analyzeKeyword(state.currentKeyword, { resetScroll: true });
+  });
+  el('exportBtn').addEventListener('click', exportCSV);
+  el('clearBtn').addEventListener('click', clearAll);
+
+  el('collapseBtn').addEventListener('click', function () { setCollapsed(!state.collapsed); });
+  el('expandBtn').addEventListener('click', function () { setCollapsed(false); });
+
+  el('kwSelect').addEventListener('change', function (e) {
+    const kw = e.target.value;
+    if (!kw || kw === state.currentKeyword) return;
+    clearError();
+    analyzeKeyword(kw, { resetScroll: true });
+  });
+
+  el('resultNav').addEventListener('click', function (e) {
+    const a = e.target.closest('a[data-target]');
+    if (!a) return;
+    e.preventDefault();
+    const node = el(a.getAttribute('data-target'));
+    if (!node) return;
+    const top = node.getBoundingClientRect().top + window.scrollY - stickyOffset() - 8;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+  });
+
+  let resizeTimer = null;
+  window.addEventListener('resize', function () {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      refreshSticky();
+      if (state.status === 'success' && currentResult()) setupNav(currentResult().hasMixed);
+    }, 120);
+  });
+}
+
+/* ============================ 内置 CSV 解析（RFC4180，无第三方依赖） ============================ */
+/* Android 端注入的是已生成好的 CSV 文本（区块,分类,占比,TGI，\r\n 分行，含逗号/引号字段会被双引号包裹），
+   故无需 PapaParse/SheetJS，自实现一个最小解析器即可。支持 BOM、\r\n/\n、双引号转义。 */
+function parseCsvText(text) {
+  if (text === null || text === undefined) return [];
+  let s = String(text);
+  if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1);
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+  const n = s.length;
+  while (i < n) {
+    const c = s.charAt(i);
+    if (inQuotes) {
+      if (c === '"') {
+        if (s.charAt(i + 1) === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === ',') { row.push(field); field = ''; i++; continue; }
+    if (c === '\r') {
+      if (s.charAt(i + 1) === '\n') i++;
+      row.push(field); field = ''; rows.push(row); row = []; i++; continue;
+    }
+    if (c === '\n') {
+      row.push(field); field = ''; rows.push(row); row = []; i++; continue;
+    }
+    field += c; i++;
+  }
+  /* 最后一行若无换行结尾也要收进来；但整行只有空字段且前面已闭合则不收 */
+  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+/* 原生端在页面加载完成后调用：直接把抓取到的 CSV 文本灌入排名工具。 */
+window.loadFromCsv = function (csvText, sourceName) {
+  try {
+    resetForNewData();
+    clearError();
+    const rows = parseCsvText(csvText);
+    if (!rows.length) {
+      showError('注入的 CSV 为空，无法分析。');
+      setStatus('error');
+      return;
+    }
+    const src = sourceName || '抖音指数抓取结果';
+    state.file = { name: src, size: String(csvText).length, sample: false };
+    const table = buildTable(rows, { fileName: src, source: src, totalRows: rows.length - 1, extraCols: 0 });
+    processTable(table);
+  } catch (e) {
+    showError('CSV 解析失败：' + String(e && e.message ? e.message : e));
+    setStatus('error');
+  }
+};
+
+/* 原生端可在注入前把数据挂到 window，init 时自动载入（省去 evaluateJavascript 的时序等待）。 */
+window.__autoLoadRanking = function () {
+  const p = window.__rankingPayload;
+  if (p && typeof p.csv === 'string' && p.csv.length > 0) {
+    window.loadFromCsv(p.csv, p.keyword || '');
+  }
+};
+
+function init() {
+  bindEvents();
+  /* 「返回抓取」走原生桥关闭本 Activity；浏览器直开时退回历史。 */
+  const backBtn = el('backBtn');
+  if (backBtn) {
+    backBtn.addEventListener('click', function () {
+      if (window.DyRankingBridge && typeof window.DyRankingBridge.close === 'function') {
+        try { window.DyRankingBridge.close(); return; } catch (e) { /* fallthrough */ }
+      }
+      if (window.history.length > 1) window.history.back();
+    });
+  }
+  refreshSticky();
+  setStatus('idle');
+  /* 原生端已预挂载数据则立即载入；否则等待 evaluateJavascript 调用 loadFromCsv。 */
+  if (window.__rankingPayload) {
+    window.__autoLoadRanking();
+  }
+}
+
+init();
+</script>
+
+
+</body></html>

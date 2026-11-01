@@ -6,6 +6,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentUris;
 import android.content.ContentValues;
+import android.content.Intent;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -66,6 +67,7 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private Button runBtn;
     private Button copyBtn;
+    private Button rankingBtn;
 
     private String extractJs;
     private volatile String lastCsv;
@@ -185,16 +187,22 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) { exportCsv(); }
         });
+        // 综合排名：把本次抓取结果直接送入内置排名分析页（自动载入，无需手动导出/上传）。
+        rankingBtn = actionButton("综合排名", false, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { openRanking(); }
+        });
         // 诊断：把最近一次抓取脚本「实际看到的内容」复制到剪贴板，便于定位采集失败原因。
         Button debugBtn = actionButton("诊断", false, new View.OnClickListener() {
             @Override
             public void onClick(View v) { copyDebug(); }
         });
 
-        // 四个按钮等宽排布，点击区域整齐且互不挤压。
+        // 五个按钮等宽排布，点击区域整齐且互不挤压。
         addWeighted(row, runBtn, 0);
         addWeighted(row, copyBtn, dp(8));
         addWeighted(row, exportBtn, dp(8));
+        addWeighted(row, rankingBtn, dp(8));
         addWeighted(row, debugBtn, dp(8));
         setCopyEnabled(false);
 
@@ -325,11 +333,16 @@ public class MainActivity extends Activity {
         row.addView(child, lp);
     }
 
-    // 复制按钮可用态：禁用时置灰，明确「还没有结果」。
+    // 复制/排名按钮可用态：禁用时置灰，明确「还没有结果」。
     private void setCopyEnabled(boolean on) {
-        if (copyBtn == null) return;
-        copyBtn.setEnabled(on);
-        copyBtn.setAlpha(on ? 1f : 0.4f);
+        if (copyBtn != null) {
+            copyBtn.setEnabled(on);
+            copyBtn.setAlpha(on ? 1f : 0.4f);
+        }
+        if (rankingBtn != null) {
+            rankingBtn.setEnabled(on);
+            rankingBtn.setAlpha(on ? 1f : 0.4f);
+        }
     }
 
     private int dp(int v) {
@@ -392,6 +405,16 @@ public class MainActivity extends Activity {
     }
 
     private String keywordCache = "";
+
+    // 打开综合排名分析页：把最近一次抓取的 CSV 直接传入，页面侧自动载入分析。
+    private void openRanking() {
+        String csv = lastCsv;
+        if (csv == null || csv.isEmpty()) { toast("还没有可分析的结果"); return; }
+        Intent intent = new Intent(this, RankingActivity.class);
+        intent.putExtra(RankingActivity.EXTRA_CSV, csv);
+        intent.putExtra(RankingActivity.EXTRA_KEYWORD, keywordCache);
+        startActivity(intent);
+    }
 
     // Android 10(Q) 起走 MediaStore（免运行时权限，落在系统「下载」目录）；
     // 更低版本退回应用专属目录（同样免权限）。
@@ -508,6 +531,8 @@ public class MainActivity extends Activity {
                         setCopyEnabled(true);
                         statusView.setText("抓取完成：共 " + rows + " 条，已自动导出");
                         exportCsv();
+                        // 抓取成功后自动进入综合排名分析页（无需手动点按钮）。
+                        openRanking();
                     }
                 });
             } catch (Throwable t) {
