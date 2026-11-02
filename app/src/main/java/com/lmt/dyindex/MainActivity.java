@@ -60,7 +60,7 @@ public class MainActivity extends Activity {
     private static final String DEFAULT_KEYWORD = "穿搭";
 
     // 抓取模式（输入框上方的 chips 单选）：决定「打开」跳转的页面与状态提示。
-    // 关键词直达分析页并自动抓取；达人/视频/话题先到搜索页，手动进详情切分析页签后再抓取。
+    // 四种模式统一为手动触发：全部由用户点「开始抓取」按钮执行提取。
     private static final int MODE_KEYWORD = 0;
     private static final int MODE_DAREN = 1;
     private static final int MODE_VIDEO = 2;
@@ -284,7 +284,7 @@ public class MainActivity extends Activity {
         bottom.setPadding(gutter, barPad, gutter, dp(18));
 
         statusView = new TextView(this);
-        statusView.setText("正在加载页面…");
+        statusView.setText("请选择模式并输入内容后点「打开」");
         statusView.setTextSize(12);
         statusView.setTextColor(0xFF666666);
         statusView.setSingleLine(true);
@@ -438,8 +438,8 @@ public class MainActivity extends Activity {
         });
 
         webView.addJavascriptInterface(new DyBridge(), "DyBridge");
+        // 打开 APK 后不自动跳转、不自动抓取，全部由用户手动发起。
         keywordCache = DEFAULT_KEYWORD;
-        webView.loadUrl(AppUrls.targetUrl(DEFAULT_KEYWORD));
 
         // 页面为 SPA，路由切换不触发 onPageFinished；轮询兜底：脚本丢失则重新注入。
         ui.post(pollReinject);
@@ -462,7 +462,8 @@ public class MainActivity extends Activity {
     }
 
     // 按当前模式与输入内容加载页面；清空上一轮结果，避免误导出旧数据。
-    // 关键词直达分析页（watcher 自动抓取）；达人/视频/话题到搜索页，状态栏引导手动步骤。
+    // 四种模式全部统一为手动：关键词直达分析页，达人/视频/话题到搜索页，
+    // 页面就绪后均由用户点底部「开始抓取」按钮触发提取。
     private void openKeyword() {
         String kw = keywordInput.getText().toString().trim();
         if (kw.isEmpty()) {
@@ -492,7 +493,7 @@ public class MainActivity extends Activity {
                 break;
             default:
                 url = AppUrls.targetUrl(kw);
-                hint = "正在加载「" + kw + "」的人群分析…";
+                hint = "正在加载「" + kw + "」的人群分析页，请在页面就绪后点「开始抓取」";
                 break;
         }
         setStatus(hint);
@@ -607,7 +608,7 @@ public class MainActivity extends Activity {
     private void exportCsv() {
         String csv = lastCsv;
         if (csv == null || csv.isEmpty()) { toast("还没有可导出的结果"); return; }
-        // 文件名按关键词固定、不带时间戳：同名覆盖，反复抓取（含每次启动的自动抓取）
+        // 文件名按关键词固定、不带时间戳：同名覆盖，反复抓取
         // 只会保留「每个关键词一份最新结果」，不会在下载目录里堆一串重复文件。
         String name = CsvUtils.fileNameFor(keywordCache);
         try {
@@ -746,10 +747,9 @@ public class MainActivity extends Activity {
                     @Override
                     public void run() {
                         setCopyEnabled(true);
-                        statusView.setText("抓取完成：共 " + rows + " 条，已自动导出");
+                        statusView.setText("抓取完成：共 " + rows + " 条，已自动导出；可点「综合排名」分析");
                         exportCsv();
-                        // 抓取成功后自动进入综合排名分析页（无需手动点按钮）。
-                        openRanking();
+                        // 不自动跳转综合排名页，由用户手动点击按钮进入。
                     }
                 });
             } catch (Throwable t) {

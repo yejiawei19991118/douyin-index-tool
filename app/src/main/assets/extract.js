@@ -13,7 +13,8 @@
  *      故对每个图表容器沿 x 轴（多行 y）派发合成 mousemove 事件，读取其「兄弟节点」tooltip 文本。
  *
  * 结果通过 window.DyBridge.onResult(json) 回传给原生侧。
- * 本脚本可重复执行：window.__dyRun() 手动触发；注入后另起一个 watcher 在页面就绪时自动触发一次。
+ * 本脚本可重复执行：window.__dyRun() 由原生侧「开始抓取」按钮手动触发；
+ * 注入后 watcher 只负责探测页面就绪状态并回传提示，不会自动跑。
  */
 (function () {
   if (window.__dyInjected) return;
@@ -906,12 +907,11 @@
     }
   };
 
-  // watcher：页面出现「人群分析」相关区块且图表已渲染时的处理。
-  // 关键词 / 话题分析页自动跑一次；达人 / 视频页需用户先手动切到粉丝/观众分析页签，
-  // 故只提示就绪，由底部「开始抓取」按钮手动触发，避免在用户还在浏览时自动跳走。
+  // watcher：统一为手动触发，无论关键词 / 话题 / 达人 / 视频四种页面，
+  // 都等待用户点底部「开始抓取」按钮才执行。脚本只负责探测页面是否已就绪，
+  // 就绪后回一条提示给状态栏，不会自动跑。
   (function watch() {
     var page = detectPage();
-    var auto = (page !== 'daren' && page !== 'video');
     var ticks = 0;
     var timer = setInterval(function () {
       ticks++;
@@ -923,14 +923,10 @@
       } catch (e) { ready = false; }
       if (ready) {
         clearInterval(timer);
-        if (auto) {
-          setTimeout(function () { window.__dyRun(); }, 1500);
-        } else {
-          bridge('onLog', '已检测到分析区块，点底部「开始抓取」提取数据');
-        }
+        bridge('onLog', '已检测到' + pageLabel(page) + '分析区块，点底部「开始抓取」提取数据');
       } else if (ticks > 300) {
         clearInterval(timer);
-        bridge('onLog', auto ? '未检测到人群分析区块' : '未检测到分析区块，请切换到对应分析页签');
+        bridge('onLog', '未检测到分析区块，请确认已进入对应分析页');
       }
     }, 1000);
   })();
