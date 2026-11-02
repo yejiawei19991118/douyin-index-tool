@@ -724,6 +724,9 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void onResult(String json) {
             try {
+                // 把完整诊断快照（含 DOM dump / canvas probe）打到 logcat，
+                // 方便 adb 直接抓根因证据，无需额外桥接层。
+                android.util.Log.i("DyIndexJS", "RESULT_SNAPSHOT: " + json);
                 JSONObject o = new JSONObject(json);
                 final String csv = o.optString("csv", "");
                 final int rows = o.optInt("rowCount", 0);

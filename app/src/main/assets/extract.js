@@ -227,6 +227,70 @@
 
   // ---------- 通用区块（手机品牌 / 手机价格等）----------
 
+  // 诊断辅助：把某区块标题附近（向上 3 层祖先）的叶子节点文本 dump 出来，
+  // 用于定位「为什么 extractGender / extractGeneric 返回空数组」。
+  function dumpNearTitle(title) {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node, label = null;
+    while ((node = walker.nextNode())) {
+      var s = (node.nodeValue || '').replace(/\s+/g, '');
+      if (!s || s.length > 20) continue;
+      if (s.indexOf(title) >= 0 && node.parentElement) { label = node.parentElement; break; }
+    }
+    if (!label) return { found: false };
+    var boxes = [];
+    var cur = label;
+    for (var up = 0; cur && cur !== document.body && up < 4; up++) {
+      var all = cur.querySelectorAll('*');
+      var lines = [];
+      for (var i = 0; i < all.length; i++) {
+        var t = (all[i].innerText || '').trim();
+        if (t && t.length < 400) {
+          var isLeaf = !all[i].querySelector('*');
+          lines.push((isLeaf ? '[L] ' : '[C] ') + t.replace(/\s+/g, ' ').slice(0, 200));
+        }
+      }
+      boxes.push({ up: up, tag: cur.tagName, cls: String(cur.className).slice(0, 80), sample: lines.slice(0, 15) });
+      cur = cur.parentElement;
+    }
+    var best = boxes[0]; var bestLen = 0;
+    for (var u = 0; u < boxes.length; u++) {
+      var len = boxes[u].sample.join('\n').length;
+      if (len > bestLen) { bestLen = len; best = boxes[u]; }
+    }
+    return {
+      found: true,
+      labelTag: label.tagName,
+      labelCls: String(label.className).slice(0, 80),
+      fullText: (label.innerText || '').slice(0, 800),
+      bestContainer: best
+    };
+  }
+
+  // 把图表 canvas 上的 tooltip 直接读一遍（y=0.3 扫一遍 x，不做下钻），
+  // 用于诊断手机分布等区块 canvas tooltip 是否真有数据。
+  async function probeCanvasTip(chartName) {
+    var chart = findChartIn(getCharts(), chartName);
+    if (!chart) return { found: false, reason: 'no chart in getCharts()' };
+    if (!chart.canvas) return { found: false, reason: 'no canvas' };
+    if (!chart.tip) return { found: false, reason: 'no tooltip element' };
+    var r;
+    try { r = chart.canvas.getBoundingClientRect(); } catch (e) { r = null; }
+    if (!r || r.width < 2) return { found: false, reason: 'canvas too small' };
+    var y = r.top + r.height * 0.3;
+    var samples = []; var seen = {};
+    for (var i = 1; i <= 30; i++) {
+      var xf = i / 31;
+      var x = r.left + r.width * xf;
+      try { chart.canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true })); } catch (e) { /* 忽略 */ }
+      await sleep(12);
+      var txt = '';
+      try { txt = (chart.tip.innerText || '').trim(); } catch (e) { txt = ''; }
+      if (txt && !seen[txt]) { seen[txt] = 1; samples.push({ xf: xf.toFixed(2), text: txt.slice(0, 120) }); }
+    }
+    return { found: true, rect: { w: Math.round(r.width), h: Math.round(r.height) }, samples: samples.slice(0, 10) };
+  }
+
   function hasTitle(marks, name) {
     for (var i = 0; i < marks.length; i++) if (marks[i].t === name) return true;
     return false;
@@ -743,6 +807,18 @@
     sections['地域分布'] = await extractRegion();
     debug.genderText = lastGenderBoxText;
     debug.browsingTabs = lastBrowsingTabs;
+
+    // 诊断 dump：把性别/手机分布区块附近的 DOM 文本和 canvas tooltip 样本全部放进 debug。
+    // 这样「诊断」按钮复制出来的快照里就包含了根因证据。
+    debug.dumps = {
+      genderBlock: dumpNearTitle('性别分布'),
+      phoneBrandBlock: dumpNearTitle('手机品牌分布'),
+      phonePriceBlock: dumpNearTitle('手机价格分布')
+    };
+    debug.probes = {
+      phoneBrandCanvas: await probeCanvasTip('手机品牌分布'),
+      phonePriceCanvas: await probeCanvasTip('手机价格分布')
+    };
 
     var csv = buildCsv(sections);
     return {
