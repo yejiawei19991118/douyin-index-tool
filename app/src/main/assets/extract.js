@@ -296,8 +296,10 @@
     return false;
   }
 
-  // 只含 DOM 表格（无 canvas）的区块兜底：从标题向上找「文本里含 排名 + TGI 表头」的
-  // 最近容器，只在该容器内按四列结构解析，避免把其它区块的数字行串进来。
+  // 只含 DOM 表格（无 canvas）的区块兜底：
+  // ① 从标题向上找到「同时包含标题文本和 canvas 图表」的最近祖先——
+  //    这样锁定在本区块根节点，不会把上方地域分布的表格误当成手机分布。
+  // ② 在该容器内找「含排名 + TGI 表头」的表格，按四列结构解析。
   function parseTableNear(title) {
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
     var node, label = null;
@@ -307,8 +309,18 @@
       if (s.indexOf(title) >= 0 && node.parentElement) { label = node.parentElement; break; }
     }
     if (!label) return [];
-    var cur = label, depth = 0;
-    while (cur && cur !== document.body && depth < 10) {
+
+    // 锁定本区块根：含 canvas 且标题在容器内。
+    var root = label, depth = 0;
+    while (root && root !== document.body && depth < 8) {
+      if (root.querySelector('.lightcharts-container canvas')) break;
+      root = root.parentElement;
+      depth++;
+    }
+
+    // 在 root 范围内向上找含 排名+TGI 表头的容器。
+    var cur = root; depth = 0;
+    while (cur && cur !== document.body && depth < 4) {
       var txt = cur.innerText || '';
       if (txt.indexOf('排名') >= 0 && txt.indexOf('TGI') >= 0) {
         var rows = parseRegionTable(txt.split('\n'));
@@ -349,49 +361,87 @@
   }
 
   function extractGender() {
-    var out = [];
-
-    // ① 定位两个标签元素：真实页面里标签是纯文本叶子，故取「去空白后 <= 10 字」的元素。
-    var mLab = null, fLab = null;
-    var all = document.querySelectorAll('*');
-    for (var i = 0; i < all.length; i++) {
-      var e = all[i];
-      var s = (e.textContent || '').replace(/\s+/g, '');
-      if (!s || s.length > 10) continue;
-      if (!mLab && s.indexOf('男性') >= 0) mLab = e;
-      if (!fLab && s.indexOf('女性') >= 0) fLab = e;
-      if (mLab && fLab) break;
+    // 先找「性别分布」标题，从它向上找一个足够大的容器：
+    // 容器要么含 canvas（关键词页），要么同时出现「男性」「女性」和「占比 X%」数字（达人页）。
+    // 这样避开介绍文案被拆成短 span 导致 nearestCommon 只覆盖介绍文案的问题。
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node, titleEl = null;
+    while ((node = walker.nextNode())) {
+      var s = (node.nodeValue || '').replace(/\s+/g, '');
+      if (!s || s.length > 20) continue;
+      if (s === '性别分布' && node.parentElement) { titleEl = node.parentElement; break; }
+    }
+    var box = titleEl;
+    if (box) {
+      // 向上找：直到容器里有 canvas 或有 男性+女性+占比数字 三个特征同时出现。
+      var cur = titleEl, depth = 0;
+      while (cur && cur !== document.body && depth < 10) {
+        var flatTest = (cur.innerText || '').replace(/\s+/g, '');
+        var hasCanvas = cur.querySelector('.lightcharts-container canvas') != null;
+        var hasBothGender = flatTest.indexOf('男性') >= 0 && flatTest.indexOf('女性') >= 0;
+        var hasRatio = /占比\d+(?:\.\d+)?%/.test(flatTest);
+        if (hasCanvas || (hasBothGender && hasRatio)) break;
+        cur = cur.parentElement;
+        depth++;
+      }
+      box = cur;
+    } else {
+      // 退回旧的 nearestCommon 定位（关键词页介绍文案是整句不拆 span，不会误命中）。
+      var mLab = null, fLab = null;
+      var all = document.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        var e = all[i];
+        var st = (e.textContent || '').replace(/\s+/g, '');
+        if (!st || st.length > 10) continue;
+        if (!mLab && st.indexOf('男性') >= 0) mLab = e;
+        if (!fLab && st.indexOf('女性') >= 0) fLab = e;
+        if (mLab && fLab) break;
+      }
+      box = (mLab && fLab) ? nearestCommon(mLab, fLab) : document.body;
     }
 
-    // ② 得到性别区块容器（两个标签都找不到时退回整页，仅作最后兜底）。
-    var box = (mLab && fLab) ? nearestCommon(mLab, fLab) : document.body;
-
-    // ③ 容器内压平文本，按「标签…占比X%…TGI Y」解析（页面文本里含「占比」「TGI」字样）。
+    // 容器内压平文本，按正则解析。
     var flat = ((box && box.innerText) || '').replace(/\s+/g, '');
     if (!flat) flat = (document.body.innerText || '').replace(/\s+/g, '');
-    lastGenderBoxText = flat.slice(0, 200);
-    // 标签必须与「占比」紧邻：数据行写作「男性占比48%TGI91」；
-    // 而区块顶部还有一句介绍文案「女性占比最高，女性偏好度（TGI指数）最高」，
-    // 里面同样出现「女性…占比」——若用「女性.*?占比」懒匹配会跨越文案抓到男性的 48%/91
-    // （这是真机诊断确认的残留 bug），故去掉中间的通配，只认紧邻形式。
+    lastGenderBoxText = flat.slice(0, 300);
+
+    var out = [];
+    // 紧邻正则（关键词/达人页压平后都能匹配）
     var m = flat.match(/男性占比(\d+(?:\.\d+)?)%TGI(\d+(?:\.\d+)?)/);
     var f = flat.match(/女性占比(\d+(?:\.\d+)?)%TGI(\d+(?:\.\d+)?)/);
+    // 宽松正则（万一压平没彻底，带可选空格）
+    if (!m) m = flat.match(/男性\s*占比\s*(\d+(?:\.\d+)?)\s*%\s*TGI\s*(\d+(?:\.\d+)?)/);
+    if (!f) f = flat.match(/女性\s*占比\s*(\d+(?:\.\d+)?)\s*%\s*TGI\s*(\d+(?:\.\d+)?)/);
     if (m) out.push({ name: '男性', ratio: m[1] + '%', tgi: m[2] });
     if (f) out.push({ name: '女性', ratio: f[1] + '%', tgi: f[2] });
 
-    // 兜底：容器文本里没有「占比 / TGI」字样时，退回按行结构解析（范围仍锁定在容器内）。
+    // 兜底：按行结构解析，过滤掉介绍文案行。
     if (!out.length) {
       var lines = (((box && box.innerText) || document.body.innerText || ''))
           .split('\n').map(function (t) { return t.trim(); });
+      var dataLines = [];
+      for (var li = 0; li < lines.length; li++) {
+        var ln = lines[li];
+        if (!ln) continue;
+        if (/指数|偏好度|最高|最低/.test(ln) && !/\d+(?:\.\d+)?%/.test(ln)) continue;
+        dataLines.push(ln);
+      }
       var names = ['男性', '女性'];
       for (var k = 0; k < names.length; k++) {
-        var idx = lines.indexOf(names[k]);
+        var idx = -1;
+        for (var d = 0; d < dataLines.length; d++) {
+          if (dataLines[d].indexOf(names[k]) === 0) { idx = d; break; }
+        }
         if (idx < 0) continue;
         var ratio = null, tgi = null;
-        for (var j = idx + 1; j < Math.min(lines.length, idx + 14); j++) {
-          var t = lines[j];
-          if (!ratio && /^\d+(?:\.\d+)?%$/.test(t)) ratio = t;
-          else if (ratio && !tgi && /^\d+(?:\.\d+)?$/.test(t)) { tgi = t; break; }
+        for (var j = idx; j < Math.min(dataLines.length, idx + 6); j++) {
+          var t = dataLines[j];
+          if (!ratio && /占比.*?(\d+(?:\.\d+)?)%/.test(t)) {
+            var rm = t.match(/占比.*?(\d+(?:\.\d+)?)%/);
+            if (rm) ratio = rm[1] + '%';
+          }
+          if (ratio == null && /^(\d+(?:\.\d+)?)%$/.test(t)) ratio = t;
+          if (tgi == null && /^(\d+(?:\.\d+)?)$/.test(t)) tgi = t;
         }
         if (ratio || tgi) out.push({ name: names[k], ratio: ratio || '', tgi: tgi || '' });
       }
