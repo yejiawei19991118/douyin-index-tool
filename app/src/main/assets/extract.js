@@ -689,10 +689,12 @@
     return { keyword: '关键词', topic: '话题', daren: '达人', video: '视频' }[page] || '未知页型';
   }
 
-  // 达人昵称 / 视频标题在 URL 里没有，按「顶部区域内的短文本叶子」猜测：
-  // 黑名单滤掉页签/指标/按钮文案，含标点或纯数字的行也排除。猜不中返回空串，
-  // 原生侧会继续沿用用户输入框里的词（抖音号 / 搜索词），保证文件名可读。
+  // 达人昵称 / 视频标题 / 话题名在 URL 里没有（话题详情页 URL 只有数字 ID），
+  // 按「顶部内容区内的短文本叶子」猜测：黑名单滤掉页签/指标/按钮/左侧导航文案，
+  // 含标点或纯数字的行也排除，且只认右侧内容区（left >= 12% 视口宽，跳过左侧导航栏）。
+  // 猜不中返回空串，原生侧会回退用户输入框里的词（抖音号 / 搜索词），保证文件名可读。
   function guessDisplayName(blacklist, minLen, maxLen, maxTop) {
+    var minLeft = (window.innerWidth || 0) * 0.12;
     var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
     var node;
     while ((node = walker.nextNode())) {
@@ -708,16 +710,23 @@
       if (!el) continue;
       var r;
       try { r = el.getBoundingClientRect(); } catch (e) { continue; }
-      if (!r || r.width <= 0 || r.top < 0 || r.top > maxTop) continue;
+      if (!r || r.width <= 0 || r.top < 0 || r.top > maxTop || r.left < minLeft) continue;
       return s;
     }
     return '';
   }
 
-  var DAREN_BLACKLIST = ['达人', '分析', '粉丝', '关注', '获赞', '抖音号', 'IP', '属地', '指数',
-    '合作', '授权', '私信', '作品', '直播', '店铺', '更多', '暂无', '查看', '登录'];
-  var VIDEO_BLACKLIST = ['视频', '指数', '对比', '观众', '分析', '播放', '点赞', '评论', '分享',
-    '完播', '抖音', '时长', '发布', '返回', '下载', '更多', '登录'];
+  // 左侧竖排导航与页头通用文案：达人/话题/视频页的名字都在右侧内容区，这些先排除。
+  var NAV_BLACKLIST = ['作品发布', '首页', '内容管理', '数据中心', '收入变现', '创作服务',
+    'AI分身', '随变', '世界书', '造世界', 'AI工坊', '抖音指数', '创作指南', '趋势报告',
+    '服务中心', '创作灵感', '授权管理', '开放平台'];
+  var DAREN_BLACKLIST = NAV_BLACKLIST.concat(['达人', '分析', '粉丝', '关注', '获赞', '抖音号',
+    'IP', '属地', '指数', '合作', '授权', '私信', '作品', '直播', '店铺', '更多', '暂无',
+    '查看', '登录']);
+  var VIDEO_BLACKLIST = NAV_BLACKLIST.concat(['视频', '指数', '对比', '观众', '分析', '播放',
+    '点赞', '评论', '分享', '完播', '抖音', '时长', '发布', '返回', '下载', '更多', '登录']);
+  var TOPIC_BLACKLIST = NAV_BLACKLIST.concat(['话题', '指数', '对比', '相关', '分析', '人群',
+    '热门', '视频', '创作者', '排行', '添加', '点赞', '评论', '登录', '抖音']);
 
   // 结果里的「页名」：CSV 文件名与综合排名标题都以此为准。
   function pageName(page) {
@@ -728,6 +737,9 @@
         return k ? decodeURIComponent(k) : '';
       }
       if (page === 'topic') {
+        // 话题详情页的 topic 参数是数字 ID，优先从页面顶部内容区取话题名，取不到再回退 ID。
+        var tn = guessDisplayName(TOPIC_BLACKLIST, 1, 30, 700);
+        if (tn) return tn;
         var t = u.searchParams.get('topic');
         return t ? decodeURIComponent(t) : '';
       }
@@ -910,8 +922,9 @@
   // watcher：统一为手动触发，无论关键词 / 话题 / 达人 / 视频四种页面，
   // 都等待用户点底部「开始抓取」按钮才执行。脚本只负责探测页面是否已就绪，
   // 就绪后回一条提示给状态栏，不会自动跑。
+  // page 检测放在 timer 里每次重试：SPA 路由切换可能导致首次 detectPage 拿到中间态 URL
+  // （返回 unknown），等 DOM 渲染稳定后再检测一次就能拿到正确页型。
   (function watch() {
-    var page = detectPage();
     var ticks = 0;
     var timer = setInterval(function () {
       ticks++;
@@ -921,9 +934,14 @@
         var hasCanvas = document.querySelectorAll('.lightcharts-container canvas').length > 0;
         ready = hasCanvas && /地域分布|年龄分布|性别分布|用户内容浏览分布|手机品牌分布|手机价格分布/.test(txt);
       } catch (e) { ready = false; }
+      var page = detectPage();
       if (ready) {
         clearInterval(timer);
-        bridge('onLog', '已检测到' + pageLabel(page) + '分析区块，点底部「开始抓取」提取数据');
+        if (page !== 'unknown') {
+          bridge('onLog', pageLabel(page) + '页已就绪，点底部「开始抓取」提取数据');
+        } else {
+          bridge('onLog', '页面已就绪，点底部「开始抓取」提取数据');
+        }
       } else if (ticks > 300) {
         clearInterval(timer);
         bridge('onLog', '未检测到分析区块，请确认已进入对应分析页');

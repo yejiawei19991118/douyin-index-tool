@@ -2,21 +2,13 @@ package com.lmt.dyindex;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.ContentUris;
-import android.content.ContentValues;
 import android.content.Intent;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
-import android.provider.MediaStore;
 import android.text.TextUtils;
-import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -38,11 +30,7 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -81,7 +69,6 @@ public class MainActivity extends Activity {
     private EditText keywordInput;
     private TextView statusView;
     private Button runBtn;
-    private Button copyBtn;
     private Button rankingBtn;
 
     private String extractJs;
@@ -316,26 +303,17 @@ public class MainActivity extends Activity {
                 webView.evaluateJavascript("window.__dyRun && window.__dyRun()", null);
             }
         });
-        copyBtn = actionButton("复制", false, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { copyCsv(); }
-        });
-        Button exportBtn = actionButton("导出CSV", false, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { exportCsv(); }
-        });
         // 综合排名：把本次抓取结果直接送入内置排名分析页（自动载入，无需手动导出/上传）。
         rankingBtn = actionButton("综合排名", false, new View.OnClickListener() {
             @Override
             public void onClick(View v) { openRanking(); }
         });
 
-        // 四个按钮等宽排布，点击区域整齐且互不挤压。
+        // 两个按钮等宽排布，点击区域整齐且互不挤压。
         addWeighted(row, runBtn, 0);
-        addWeighted(row, copyBtn, dp(8));
-        addWeighted(row, exportBtn, dp(8));
         addWeighted(row, rankingBtn, dp(8));
-        setCopyEnabled(false);
+        rankingBtn.setEnabled(false);
+        rankingBtn.setAlpha(0.4f);
 
         root.addView(hDivider(), new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
@@ -449,9 +427,6 @@ public class MainActivity extends Activity {
         // 打开 APK 后不自动跳转、不自动抓取，全部由用户手动发起。
         keywordCache = DEFAULT_KEYWORD;
 
-        // 页面为 SPA，路由切换不触发 onPageFinished；轮询兜底：脚本丢失则重新注入。
-        ui.post(pollReinject);
-
         // 启动时静默检查一次新版本（有更新才弹窗，失败不打扰）。
         Updater.checkAndPrompt(this, false);
     }
@@ -479,9 +454,13 @@ public class MainActivity extends Activity {
             return;
         }
         keywordCache = kw;
+        pageNameCache = "";
         lastCsv = null;
         lastRowCount = 0;
-        setCopyEnabled(false);
+        if (rankingBtn != null) {
+            rankingBtn.setEnabled(false);
+            rankingBtn.setAlpha(0.4f);
+        }
         // 用户手动发起新导航：允许卡死看门狗再次触发自动 reload。
         stuckReloadDone = false;
         String url;
@@ -556,18 +535,6 @@ public class MainActivity extends Activity {
         row.addView(child, lp);
     }
 
-    // 复制/排名按钮可用态：禁用时置灰，明确「还没有结果」。
-    private void setCopyEnabled(boolean on) {
-        if (copyBtn != null) {
-            copyBtn.setEnabled(on);
-            copyBtn.setAlpha(on ? 1f : 0.4f);
-        }
-        if (rankingBtn != null) {
-            rankingBtn.setEnabled(on);
-            rankingBtn.setAlpha(on ? 1f : 0.4f);
-        }
-    }
-
     private int dp(int v) {
         return Math.round(getResources().getDisplayMetrics().density * v);
     }
@@ -599,101 +566,22 @@ public class MainActivity extends Activity {
         webView.evaluateJavascript(extractJs, null);
     }
 
-    private void copyCsv() {
-        String csv = lastCsv;
-        if (csv == null || csv.isEmpty()) { toast("还没有可复制的结果"); return; }
-        ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        cb.setPrimaryClip(ClipData.newPlainText("人群分析CSV", csv));
-        toast("CSV 已复制到剪贴板");
-    }
-
-    private void exportCsv() {
-        String csv = lastCsv;
-        if (csv == null || csv.isEmpty()) { toast("还没有可导出的结果"); return; }
-        // 文件名按关键词固定、不带时间戳：同名覆盖，反复抓取
-        // 只会保留「每个关键词一份最新结果」，不会在下载目录里堆一串重复文件。
-        String name = CsvUtils.fileNameFor(keywordCache);
-        try {
-            String desc = writeToDownloads(name, csv);
-            toast("已导出到" + desc + "：" + name);
-        } catch (Throwable t) {
-            toast("导出失败：" + t.getMessage());
-        }
-    }
-
     private String keywordCache = "";
+    // 页面抓到的名称，按页型各自取标识：达人页=昵称，话题页=话题名，视频页=视频标题，关键词页=关键词名。
+    // 状态栏展示与综合排名页导出都用它；抓取脚本猜不到名称时回退用户输入。
+    private String pageNameCache = "";
 
     // 打开综合排名分析页：把最近一次抓取的 CSV 直接传入，页面侧自动载入分析。
     private void openRanking() {
         String csv = lastCsv;
         if (csv == null || csv.isEmpty()) { toast("还没有可分析的结果"); return; }
+        // 排名页的标题 / 导出文件名 / CSV 首列按页面类型取各自标识（pageNameCache），
+        // 抓取侧没识别出名称时用用户输入兜底。
+        String rankName = pageNameCache.isEmpty() ? keywordCache : pageNameCache;
         Intent intent = new Intent(this, RankingActivity.class);
         intent.putExtra(RankingActivity.EXTRA_CSV, csv);
-        intent.putExtra(RankingActivity.EXTRA_KEYWORD, keywordCache);
+        intent.putExtra(RankingActivity.EXTRA_KEYWORD, rankName);
         startActivity(intent);
-    }
-
-    // Android 10(Q) 起走 MediaStore（免运行时权限，落在系统「下载」目录）；
-    // 更低版本退回应用专属目录（同样免权限）。
-    private String writeToDownloads(String fileName, String content) throws IOException {
-        byte[] data = content.getBytes(StandardCharsets.UTF_8);
-        // 加 UTF-8 BOM，Excel 打开中文才不乱码。
-        byte[] withBom = new byte[data.length + 3];
-        withBom[0] = (byte) 0xEF; withBom[1] = (byte) 0xBB; withBom[2] = (byte) 0xBF;
-        System.arraycopy(data, 0, withBom, 3, data.length);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // 已存在同名文件就复用它的 Uri 覆盖写入，避免每次抓取新建一个副本。
-            Uri target = findDownloadsFile(fileName);
-            if (target == null) {
-                ContentValues values = new ContentValues();
-                values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                values.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-                values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-                target = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-                if (target == null) throw new IOException("无法在下载目录创建文件");
-            }
-            try {
-                // "wt" 表示截断重写，保证同名文件里是最新一次的结果。
-                OutputStream os = getContentResolver().openOutputStream(target, "wt");
-                if (os == null) throw new IOException("无法写入目标文件");
-                try { os.write(withBom); os.flush(); } finally { os.close(); }
-            } catch (IOException e) {
-                getContentResolver().delete(target, null, null);
-                throw e;
-            }
-            ContentValues done = new ContentValues();
-            done.put(MediaStore.MediaColumns.IS_PENDING, 0);
-            getContentResolver().update(target, done, null, null);
-            return "系统「下载」目录";
-        }
-        File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-        if (dir == null) throw new IOException("外部存储不可用");
-        if (!dir.exists() && !dir.mkdirs()) throw new IOException("无法创建目录");
-        File out = new File(dir, fileName);
-        OutputStream os = new FileOutputStream(out);
-        try { os.write(withBom); os.flush(); } finally { os.close(); }
-        return "本应用专属目录（系统「下载」里看不到，路径 Android/data/"
-                + getPackageName() + "/files/Download）";
-    }
-
-    // 在系统「下载」目录中查找同名文件；命中则返回其 Uri，用于覆盖写入。
-    private Uri findDownloadsFile(String fileName) {
-        String[] proj = { MediaStore.MediaColumns._ID };
-        String sel = MediaStore.MediaColumns.DISPLAY_NAME + "=? AND "
-                + MediaStore.MediaColumns.RELATIVE_PATH + "=?";
-        String[] args = { fileName, Environment.DIRECTORY_DOWNLOADS + "/" };
-        try (android.database.Cursor c = getContentResolver().query(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI, proj, sel, args, null)) {
-            if (c != null && c.moveToFirst()) {
-                return ContentUris.withAppendedId(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI, c.getLong(0));
-            }
-        } catch (Throwable ignore) {
-            // 查询失败就当作不存在，走新建流程
-        }
-        return null;
     }
 
     private void toast(final String msg) {
@@ -734,7 +622,9 @@ public class MainActivity extends Activity {
                 final String csv = o.optString("csv", "");
                 final int rows = o.optInt("rowCount", 0);
                 String kw = o.optString("keyword", "");
-                if (!kw.isEmpty()) keywordCache = kw;
+                // 页面识别到的名称按页型各自取标识：达人=昵称、话题=话题名、视频=视频标题、
+                // 关键词=关键词名；状态展示与综合排名页导出都以它为准，识别不到时回退用户输入。
+                if (!kw.isEmpty()) pageNameCache = kw;
                 if (csv.isEmpty() || rows == 0) {
                     setStatus("未采集到数据，请确认已登录且处于人群分析页");
                     toast("未采集到数据：请确认已登录处于人群分析页");
@@ -742,13 +632,16 @@ public class MainActivity extends Activity {
                 }
                 lastCsv = csv;
                 lastRowCount = rows;
+                final String displayName = pageNameCache.isEmpty() ? keywordCache : pageNameCache;
                 ui.post(new Runnable() {
                     @Override
                     public void run() {
-                        setCopyEnabled(true);
-                        statusView.setText("抓取完成：共 " + rows + " 条，已自动导出；可点「综合排名」分析");
-                        exportCsv();
-                        // 不自动跳转综合排名页，由用户手动点击按钮进入。
+                        if (rankingBtn != null) {
+                            rankingBtn.setEnabled(true);
+                            rankingBtn.setAlpha(1f);
+                        }
+                        // 内置提示词：总览 + 下一步指引；具体导出在「综合排名」页内完成。
+                        statusView.setText("抓取完成：" + displayName + " 共 " + rows + " 条，点「综合排名」分析/导出");
                     }
                 });
             } catch (Throwable t) {
@@ -769,12 +662,16 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().flush();
         // 上一次更新下载若已结束（进程曾被杀导致完成广播丢失），这里补上安装。
         Updater.resumePendingInstall(this);
+        // 仅在前台轮询注入脚本与预热 seed，切后台（如打开排名页）时停止以省电省 CPU。
+        ui.removeCallbacks(pollReinject);
+        ui.post(pollReinject);
     }
 
     @Override
     protected void onPause() {
         // 切后台前把内存中的登录 Cookie 落盘，进程被回收后仍能免登录。
         CookieManager.getInstance().flush();
+        ui.removeCallbacks(pollReinject);
         super.onPause();
     }
 

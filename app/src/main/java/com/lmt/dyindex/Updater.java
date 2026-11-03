@@ -89,9 +89,6 @@ public final class Updater {
     /** 是否已有一次检查在跑：避免自动检查与手动检查并发重复请求。 */
     private static final AtomicBoolean sChecking = new AtomicBoolean(false);
 
-    /** 更新弹窗是否正在显示：避免重复叠加。 */
-    private static boolean sDialogShowing;
-
     /** 下载完成广播接收器（仅在下载期间注册）。 */
     private static BroadcastReceiver sReceiver;
 
@@ -169,7 +166,7 @@ public final class Updater {
                     activity.runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            if (activity.isFinishing()) return;
+                            if (activity.isFinishing() || activity.isDestroyed()) return;
                             startDownload(activity, r);
                             sp.edit().putString(KEY_AUTO_TAG, r.tag).apply();
                             toast(app, "发现新版本 " + r.version + "，后台下载中…");
@@ -404,9 +401,13 @@ public final class Updater {
                     return;
                 }
                 if (!signatureMatches(app, file)) {
+                    if (activity.isFinishing() || activity.isDestroyed()) {
+                        return;
+                    }
                     activity.runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
+                            if (activity.isFinishing() || activity.isDestroyed()) return;
                             showSignatureMismatchDialog(activity, file);
                         }
                     });
@@ -549,7 +550,7 @@ public final class Updater {
     /** 签名不一致（换了签名密钥）时不再直接调安装器，避免用户对着失败提示不知所措。 */
     private static void showSignatureMismatchDialog(final Activity activity, final File file) {
         if (activity == null) return;
-        if (activity.isFinishing()) {
+        if (activity.isFinishing() || activity.isDestroyed()) {
             toast(activity, "新旧安装包签名不一致，请卸载后重新下载安装：" + RELEASES_PAGE);
             return;
         }

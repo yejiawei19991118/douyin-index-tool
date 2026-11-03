@@ -1,6 +1,6 @@
-<html lang="zh-CN" data-trae-theme="light" style="--sticky-h: 286px;"><head>
+<html lang="zh-CN" data-trae-theme="light"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>目标关键词人群特征综合排名工具</title>
 
 
@@ -8,7 +8,7 @@
 :root{
   --primary:#2563eb;--success:#16a34a;--warn:#d97706;--danger:#dc2626;
   --text:#1f2937;--muted:#6b7280;--bg:#f5f7fa;--card:#ffffff;--border:#e5e7eb;
-  --sticky-h:56px;
+  --sticky-h:48px;--nav-h:54px;
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
@@ -24,18 +24,19 @@ a{color:var(--primary);text-decoration:none}
   color:#991b1b;padding:10px 24px;text-align:center;font-weight:600}
 .cdn-error[hidden]{display:none}
 
-.topbar{position:sticky;top:0;z-index:30;height:56px;background:#fff;border-bottom:1px solid var(--border)}
-.topbar-inner{height:56px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-.app-title{font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.topbar-right{display:flex;align-items:center;gap:8px;min-width:0}
+.topbar{position:sticky;top:0;z-index:30;height:48px;background:#fff;border-bottom:1px solid var(--border);
+  padding-top:constant(safe-area-inset-top);padding-top:env(safe-area-inset-top)}
+.topbar-inner{height:48px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.app-title{font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.topbar-right{display:flex;align-items:center;gap:8px;min-width:0;flex-shrink:0}
 .chip{display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   background:#eef2ff;color:#3730a3;border-radius:999px;padding:3px 10px;font-size:12px}
 .chip.file{background:#f3f4f6;color:#4b5563}
 
 .wrap{max-width:1440px;margin:0 auto;padding:0 24px}
 
-.control{position:sticky;top:56px;z-index:20;background:#fff;border-bottom:1px solid var(--border);box-shadow:0 2px 6px rgba(17,24,39,.04)}
-.control-body{padding:14px 0 16px;display:flex;flex-direction:column;gap:12px}
+.control{position:sticky;top:48px;z-index:20;background:#fff;border-bottom:1px solid var(--border);box-shadow:0 2px 6px rgba(17,24,39,.04)}
+.control-body{padding:12px 0 14px;display:flex;flex-direction:column;gap:10px}
 .control-summary{display:none;height:48px;align-items:center;gap:10px}
 .control-summary.show{display:flex}
 .control.collapsed .control-body{display:none}
@@ -60,15 +61,20 @@ a{color:var(--primary);text-decoration:none}
 
 .btn-row{display:flex;gap:12px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border);
-  background:#fff;color:var(--text);border-radius:8px;padding:8px 14px;cursor:pointer;transition:.15s}
+  background:#fff;color:var(--text);border-radius:8px;padding:10px 14px;min-height:40px;cursor:pointer;transition:.15s;
+  -webkit-tap-highlight-color:transparent}
 .btn:hover:not(:disabled){border-color:#cbd5e1;background:#f9fafb}
-.btn:disabled{cursor:not-allowed;opacity:.5}
+.btn:active:not(:disabled){transform:scale(.97);background:#f1f5f9}
+.btn:disabled{cursor:not-allowed;opacity:.4;color:#9ca3af;background:#f9fafb}
 .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
 .btn.primary:hover:not(:disabled){background:#1d4ed8;border-color:#1d4ed8}
+.btn.primary:active:not(:disabled){background:#1d4ed8}
 .btn.danger{border-color:#fecaca;color:var(--danger);background:#fff}
 .btn.danger:hover:not(:disabled){background:#fef2f2}
-.btn.ghost{border-color:transparent;background:transparent;color:var(--primary);padding:6px 10px}
-.btn.sm{padding:5px 10px;font-size:12px}
+.btn.danger:active:not(:disabled){background:#fee2e2}
+.btn.ghost{border-color:#e5e7eb;background:#f9fafb;color:var(--primary);padding:8px 14px;min-height:36px;font-size:14px}
+.btn.ghost:active:not(:disabled){background:#eff6ff}
+.btn.sm{padding:7px 12px;font-size:14px;min-height:34px}
 
 .error-bar{position:sticky;top:var(--sticky-h);z-index:15;margin-top:12px;border:1px solid var(--danger);border-radius:12px;background:#fef2f2;color:#991b1b;padding:12px 14px}
 .error-bar[hidden]{display:none}
@@ -84,11 +90,13 @@ a{color:var(--primary);text-decoration:none}
   padding:10px 18px;border-radius:999px;font-size:13px;z-index:60;box-shadow:0 6px 20px rgba(0,0,0,.18)}
 .toast[hidden]{display:none}
 
-.main{padding-top:16px;padding-bottom:56px}
-.result-nav{position:sticky;top:var(--sticky-h);z-index:10;display:flex;gap:6px;padding:8px 0;
-  background:var(--bg);overflow-x:auto;scrollbar-width:thin}
+.main{padding-top:12px;padding-bottom:calc(56px + env(safe-area-inset-bottom))}
+.result-nav{position:sticky;top:var(--sticky-h);z-index:10;display:flex;gap:6px;padding:10px 12px;
+  background:#fff;border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+  overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
 .result-nav[hidden]{display:none}
-.result-nav a{padding:6px 12px;border-radius:999px;color:var(--muted);white-space:nowrap;border:1px solid transparent}
+.result-nav a{padding:8px 14px;border-radius:999px;color:var(--muted);white-space:nowrap;border:1px solid transparent;
+  min-height:36px;display:inline-flex;align-items:center;flex-shrink:0}
 .result-nav a.active{color:var(--primary);background:#eff6ff;border-color:#bfdbfe}
 .result-nav a:focus-visible,.btn:focus-visible,th:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
 
@@ -96,8 +104,8 @@ a{color:var(--primary);text-decoration:none}
 .empty-state{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:48px 24px;
   text-align:center;color:var(--muted)}
 
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 3px rgba(17,24,39,.05);padding:18px 20px;scroll-margin-top:calc(var(--sticky-h) + 56px)}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 3px rgba(17,24,39,.05);padding:16px 18px;scroll-margin-top:calc(var(--sticky-h) + var(--nav-h) + 8px)}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
 .card-head h2{font-size:16px}
 .card-head .meta{color:var(--muted);font-size:12px}
 .card-note{color:var(--muted);font-size:12px}
@@ -111,6 +119,10 @@ a{color:var(--primary);text-decoration:none}
 .metric .num{font-size:24px;font-weight:600;line-height:1.2}
 .metric .lab{color:var(--muted);font-size:12px;margin-top:2px}
 .metric .sub{color:#9ca3af;font-size:11px}
+.tips-row{display:flex;align-items:baseline;gap:10px;padding:6px 0;justify-content:center}
+.tips-kw{font-size:18px;font-weight:700;color:#111827}
+.tips-sub{color:#6b7280;font-size:12px}
+.control-tips{padding-top:4px;border-top:1px dashed var(--border);margin-top:10px}
 
 .kv{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;margin-bottom:10px}
 .kv .k{color:var(--muted)}
@@ -118,14 +130,6 @@ a{color:var(--primary);text-decoration:none}
 .badge.warn{background:#fffbeb;color:#92400e}
 .badge.err{background:#fef2f2;color:#991b1b}
 .badge.ok{background:#f0fdf4;color:#166534}
-
-.block-coverage{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0 16px}
-.coverage-list{border:1px solid var(--border);border-radius:10px;padding:8px 10px;background:#fbfcfe}
-.coverage-list .t{font-size:12px;color:var(--muted);margin-bottom:4px}
-.coverage-list ul{margin:0;padding-left:18px}
-.coverage-list li{font-size:13px;line-height:1.7}
-.coverage-list li.ok{color:#166534}
-.coverage-list li.miss{color:#6b7280}
 
 .sub-title{font-size:14px;font-weight:600;margin:16px 0 8px}
 .stats-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -148,16 +152,17 @@ details.anomaly .truncate{font-size:12px;color:var(--muted);margin-top:6px}
 .method dd{margin:0}
 @media (max-width:640px){.method dl{grid-template-columns:1fr} .method dd{margin-bottom:8px}}
 
-.table-wrap{overflow:auto;max-height:480px;border:1px solid var(--border);border-radius:10px}
+.table-wrap{overflow:auto;-webkit-overflow-scrolling:touch;max-height:480px;border:1px solid var(--border);border-radius:10px;overscroll-behavior:contain}
 .table-wrap.mixed{max-height:600px}
-table.data-table{width:100%;border-collapse:collapse;font-size:13px;min-width:max-content}
+table.data-table{width:100%;border-collapse:collapse;font-size:14px;min-width:max-content}
 table.data-table thead th{position:sticky;top:0;z-index:5;background:#f9fafb;border-bottom:1px solid var(--border);
-  padding:8px 10px;text-align:left;white-space:nowrap;font-weight:600}
+  padding:10px 12px;text-align:left;white-space:nowrap;font-weight:600}
 table.data-table thead th.sortable{cursor:pointer;user-select:none}
 table.data-table thead th.sortable:hover{background:#eff6ff}
 table.data-table thead th .arrow{color:var(--primary);font-size:11px;margin-left:4px}
-table.data-table tbody td{padding:7px 10px;border-bottom:1px solid #f1f3f5;vertical-align:middle}
+table.data-table tbody td{padding:12px;border-bottom:1px solid #f1f3f5;vertical-align:middle}
 table.data-table tbody tr:nth-child(even){background:#fcfcfd}
+table.data-table tbody tr:active{background:#eff6ff}
 table.data-table td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 table.data-table td.name{font-weight:500}
 .hint-bar{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px}
@@ -187,10 +192,17 @@ table.data-table td.name{font-weight:500}
 
 @media (max-width:768px){
   .wrap{padding:0 12px}
-  .btn-row .btn{flex:1 1 45%}
-  .block-coverage{grid-template-columns:1fr}
+  .btn-row .btn{flex:1 1 calc(50% - 6px)}
   .app-title{font-size:16px}
   .topbar-right .chip.file{display:none}
+  .card{padding:14px 16px;border-radius:10px}
+  .card-head{margin-bottom:8px}
+  .results{gap:12px}
+}
+@media (max-width:480px){
+  .card-head{flex-direction:column;align-items:flex-start;gap:4px}
+  .card-head .meta{font-size:11px}
+  .btn-row .btn{flex:1 1 calc(50% - 6px)}
 }
 </style>
 </head>
@@ -199,10 +211,8 @@ table.data-table td.name{font-weight:500}
 
 <header class="topbar">
   <div class="wrap topbar-inner">
-    <h1 class="app-title">目标关键词人群特征综合排名工具</h1>
+    <h1 class="app-title" id="pageTitle">综合排名</h1>
     <div class="topbar-right">
-      <span class="chip" id="topKeyword">未选择关键词</span>
-      <span class="chip file" id="topFile">内置数据</span>
       <button class="btn ghost sm" id="backBtn">返回抓取</button>
       <button class="btn ghost sm" id="collapseBtn" aria-expanded="true">收起控制区</button>
     </div>
@@ -211,23 +221,7 @@ table.data-table td.name{font-weight:500}
 
 <section class="control" id="control">
   <div class="wrap">
-    <div class="control-summary" id="controlSummary">
-      <span class="sum-kw" id="sumKW">未选择关键词</span>
-      <span class="sum-status" id="sumStatus">未上传文件</span>
-      <button class="btn ghost sm" id="expandBtn">展开控制区</button>
-    </div>
     <div class="control-body" id="controlBody">
-      <div class="upload-card" id="dropzone" hidden="">
-        <div class="upload-main">
-          <strong>上传抖音指数数据文件</strong>
-          <span>支持 .csv / .xlsx / .xls / .json，单文件 ≤ 50MB（超出仅提示，仍会解析）</span>
-          <span class="file-pill" id="fileInfo">尚未选择文件</span>
-        </div>
-        <div class="upload-actions">
-          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls,.json" hidden="">
-          <button class="btn primary" id="pickBtn">点击选择文件</button>
-        </div>
-      </div>
       <div class="kw-row" id="kwRow" hidden="">
         <label for="kwSelect">关键词</label>
         <select id="kwSelect"></select>
@@ -236,9 +230,10 @@ table.data-table td.name{font-weight:500}
       <div class="btn-row">
         <button class="btn primary" id="reanalyzeBtn" disabled="">重新分析</button>
         <button class="btn" id="sampleBtn" hidden="">加载示例数据</button>
-        <button class="btn" id="exportBtn" disabled="">导出结果 CSV</button>
+        <button class="btn" id="exportBtn" disabled="">导出结果</button>
         <button class="btn danger" id="clearBtn" disabled="">清空</button>
       </div>
+      <div id="controlTips" class="control-tips" hidden=""></div>
     </div>
   </div>
 </section>
@@ -248,15 +243,9 @@ table.data-table td.name{font-weight:500}
 </div>
 
 <main class="wrap main">
-  <nav class="result-nav" id="resultNav" aria-label="结果区导航" hidden="">
-    <a href="#card-overview" data-target="card-overview">总览</a>
-    <a href="#card-quality" data-target="card-quality">数据质量</a>
-    <a href="#card-method" data-target="card-method">方法参数</a>
-    <a href="#card-blocks" data-target="card-blocks">分区块榜单</a>
-    <a href="#card-mixed" data-target="card-mixed">二级混合总榜</a>
-  </nav>
+  <nav class="result-nav" id="resultNav" aria-label="结果区导航" hidden=""></nav>
   <section class="results" id="results">
-    <div class="empty-state" id="emptyState">请上传数据文件后开始分析</div>
+    <div class="empty-state" id="emptyState">数据载入中…</div>
   </section>
 </main>
 
@@ -274,7 +263,6 @@ const LIST_TRUNCATE = 20;
 const ANOMALY_SAMPLE_MAX = 20;
 const EXPORT_PROGRESS_ROWS = 5000;
 const EQUAL_WEIGHT = 0.5;
-const STANDARD_BLOCK_COUNT = 8;
 const KEYWORD_NULL_RATIO_ALERT = 0.3;
 const SEP = '\u0001';
 const CONTENT_BLOCK = '用户内容浏览分布';
@@ -299,7 +287,9 @@ const QUADRANT_TEXT = {
 };
 const QUADRANT_CLASS = { HH: 'q-hh', HL: 'q-hl', LH: 'q-lh', LL: 'q-ll' };
 
-/* 无关键词列时从文件名推导关键词：抖音指数_<关键词>_人群分析.xlsx → <关键词> */
+/* 无关键词列时从文件名推导关键词：
+   - 标准格式：抖音指数_<关键词>_人群分析.xlsx → <关键词>
+   - 纯关键词：'穿搭' → '穿搭'（兜底） */
 function deriveKeywordFromName(name) {
   const base = String(name === null || name === undefined ? '' : name)
     .replace(/^.*[\\/]/, '')
@@ -315,7 +305,8 @@ function deriveKeywordFromName(name) {
     const m = base.match(patterns[i]);
     if (m && m[1].trim()) return m[1].trim();
   }
-  return '';
+  // 兜底：如果传入本身就是纯关键词（没有「抖音指数/人群分析」前后缀），直接返回
+  return base;
 }
 
 /* ============================ 运行时状态 ============================ */
@@ -331,12 +322,13 @@ const state = {
   resultCache: new Map(),
   sortState: new Map(),
   generation: 0,
-  collapsed: false,
+  collapsed: true,
   parsing: null,
   activeReader: null,
   tableRegistry: new Map(),
   domIdMap: new Map(),
-  activeNavObserver: null
+  activeNavObserver: null,
+  _stickyOffsetCache: 102
 };
 
 /* ============================ 通用工具 ============================ */
@@ -557,89 +549,24 @@ function checkEncoding(info, kind) {
 }
 
 function papaRun(text, useWorker) {
-  return new Promise(function (resolve) {
-    let done = false;
-    let progressed = false;
-    let guard = null;
-    const startedAt = Date.now();
-    let lastTick = startedAt;
-    const config = {
-      header: false,
-      skipEmptyLines: 'greedy',
-      worker: useWorker,
-      dynamicTyping: false,
-      delimiter: '',
-      progress: function (p) {
-        progressed = true;
-        lastTick = Date.now();
-        if (p && p.meta) updateParseProgress(p.meta.cursor, text.length);
-      },
-      complete: function (res) {
-        if (done) return;
-        if (useWorker && res && res.errors && res.errors.length) {
-          const first = res.errors[0];
-          if (first && /worker/i.test(String(first.message || ''))) {
-            done = true;
-            clearInterval(guard);
-            resolve({ workerFailed: true });
-            return;
-          }
-        }
-        done = true;
-        clearInterval(guard);
-        resolve({ parsed: res });
-      },
-      error: function (e) {
-        if (done) return;
-        done = true;
-        clearInterval(guard);
-        resolve({ error: e });
-      }
-    };
-    /* 看门狗：worker 启动后 3 秒无任何进度 → 降级主线程；
-       已有进度但连续 30 秒无新增 → 视为 worker 卡死，同样降级，避免页面永久停在“正在解析…” */
-    guard = useWorker ? setInterval(function () {
-      if (done) return;
-      const idle = Date.now() - lastTick;
-      if (!progressed ? idle > 3000 : idle > 30000) {
-        done = true;
-        clearInterval(guard);
-        resolve({ workerFailed: true });
-      }
-    }, 150) : null;
-    try {
-      Papa.parse(text, config);
-    } catch (e) {
-      if (!done) {
-        done = true;
-        if (guard) clearInterval(guard);
-        resolve({ workerFailed: true });
-      }
-    }
-  });
+  // 已废弃：CSV 解析改用内联 parseCsvText，不再依赖 PapaParse。
+  return Promise.resolve({ workerFailed: true });
 }
 
 async function parseCsv(text) {
-  let out = await papaRun(text, true);
-  if (out.workerFailed) {
-    console.warn('[CSV] worker 模式启动失败或 3 秒内无进度，降级为 worker:false 重试');
-    out = await papaRun(text, false);
+  // 内联解析器（与原生注入路径 parseCsvText 一致），不依赖 PapaParse CDN。
+  const parsed = parseCsvText(text);
+  if (!parsed || !parsed.rows || parsed.rows.length === 0) {
+    throw err('CSV_PARSE', 'CSV 解析失败：未获得有效数据。');
   }
-  if (out.error) {
-    throw err('CSV_PARSE', 'CSV 解析失败：' + String(out.error.message || out.error) + '。');
-  }
-  const res = out.parsed;
-  if (!res || !res.data) throw err('CSV_PARSE', 'CSV 解析失败：未获得有效数据。');
-  if (res.errors && res.errors.length) {
-    const e = res.errors[0];
-    const row = typeof e.row === 'number' ? e.row + 1 : 1;
-    throw err('CSV_PARSE', 'CSV 解析失败：' + String(e.message || '格式错误') + '（第 ' + row + ' 行）。');
-  }
-  return res.data;
+  return parsed.rows;
 }
 
 async function parseExcel(buffer) {
   await new Promise(function (r) { setTimeout(r, 0); });
+  if (typeof XLSX === 'undefined') {
+    throw err('EXCEL_UNAVAILABLE', 'Excel 解析依赖未加载，暂不支持 .xlsx/.xls 文件；请改用 .csv 格式。');
+  }
   let wb;
   try {
     wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
@@ -1572,7 +1499,7 @@ function clearLoadingArea() {
   const bar = el('loadingBar');
   if (bar) bar.remove();
   if (results.querySelector('.skeleton')) {
-    results.innerHTML = '<div class="empty-state" id="emptyState">处理失败，请重新选择文件后重试</div>';
+    results.innerHTML = '<div class="empty-state" id="emptyState">处理失败，请重试</div>';
   }
   teardownNav();
   el('resultNav').hidden = true;
@@ -1588,10 +1515,8 @@ function showError(messageCode, detail) {
   bar.innerHTML = '<div class="err-head"><div class="err-icon">!</div><div class="err-body">' +
     '<div class="err-title">处理失败</div><div class="err-detail">' + esc(messageCode) +
     (detail ? '<br>' + esc(detail) : '') + '</div></div>' +
-    '<div class="err-actions"><button class="btn sm" id="errPick">重新选择文件</button>' +
-    '<button class="btn sm" id="errClose">关闭</button></div></div>';
+    '<div class="err-actions"><button class="btn sm" id="errClose">关闭</button></div></div>';
   bar.hidden = false;
-  el('errPick').addEventListener('click', function () { el('fileInput').click(); });
   el('errClose').addEventListener('click', function () {
     bar.hidden = true;
     if (state.clean) setStatus('success'); else setStatus('idle');
@@ -1609,7 +1534,7 @@ function setStatus(status) {
 }
 
 function fileSizeText(file) {
-  if (!file) return '未上传文件';
+  if (!file) return '等待数据';
   if (file.sample) return '示例数据（内置） · 内置';
   const size = file.size;
   if (size < 1024) return file.name + ' · ' + size + ' B';
@@ -1641,30 +1566,11 @@ function syncUI() {
   const idle = status === 'idle';
   const success = status === 'success';
 
-  el('topKeyword').textContent = currentKeywordLabel();
-  el('topFile').textContent = state.file ? fileSizeText(state.file) : '未上传文件';
-  el('sumKW').textContent = currentKeywordLabel();
-  el('sumStatus').textContent = state.file ? fileSizeText(state.file) : '未上传文件';
-
   el('sampleBtn').disabled = busy;
-  el('pickBtn').disabled = busy || !CDN_OK;
   el('reanalyzeBtn').disabled = busy || idle || !state.clean;
   el('exportBtn').disabled = busy || !success || !hasValidRecords();
   el('clearBtn').disabled = busy || (!state.file && !state.clean);
   el('kwSelect').disabled = busy && status === 'parsing';
-
-  const uploadCard = el('dropzone');
-  if (uploadCard) uploadCard.classList.toggle('disabled', busy || !CDN_OK);
-
-  if (el('fileInfo')) {
-    let text = '尚未选择文件';
-    if (state.file) {
-      text = fileSizeText(state.file) + ' · ' + ({
-        idle: '待分析', parsing: '正在解析…', analyzing: '正在分析…', success: '已完成', error: '解析失败'
-      }[status] || '');
-    }
-    el('fileInfo').textContent = text;
-  }
 }
 
 /* ============================ 排序与表格 ============================ */
@@ -1764,7 +1670,6 @@ function rStatusTag(status) {
 function buildBlockTableHTML(list) {
   const priceBlock = list.name === '手机价格分布';
   let head = '<tr>' +
-    thSort('区块', 'block', list, 120, false, false) +
     thSort('分类', 'name', list, 160, false, false) +
     (priceBlock ? thSort('原始档位顺序', 'seq', list, 90, true, true) : '') +
     thSort('原始占比', 'share', list, 90, true, true) +
@@ -1778,7 +1683,6 @@ function buildBlockTableHTML(list) {
     '</tr>';
   const rows = displayRows(list).map(function (r) {
     return '<tr>' +
-      '<td>' + esc(r.block) + '</td>' +
       '<td class="name">' + esc(r.name) + '</td>' +
       (priceBlock ? '<td class="num">' + (r.seq || '—') + '</td>' : '') +
       '<td class="num">' + formatShare(r.share) + '</td>' +
@@ -1896,41 +1800,6 @@ function bindSortHandlersOne(domId) {
   });
 }
 /* ============================ 结果区渲染 ============================ */
-function warningSummary() {
-  const clean = state.clean;
-  const s = clean.stats;
-  const rejectCount = s.emptyCategory + s.shareMissing + s.shareInvalid +
-    s.tgiMissing + s.tgiNegative + s.nonStandardBlock + s.zeroValue + s.duplicate;
-  const tgiAbnormal = s.tgiNegative + s.tgiZeroMark;
-  const categories = [];
-  const details = [];
-  if (rejectCount > 0) { categories.push('剔除'); details.push('清洗各步存在剔除记录（按首次命中步骤归因）'); }
-  if (tgiAbnormal > 0) { categories.push('TGI 异常'); details.push('TGI 异常共 ' + tgiAbnormal + ' 条（负数 ' + s.tgiNegative + '，零值标记 ' + s.tgiZeroMark + '）'); }
-  if (s.parentDup > 0) { categories.push('父类重复'); details.push('父类重复记录 ' + s.parentDup + ' 条'); }
-  if (clean.fieldMatch.duplicates.length > 0) { categories.push('字段名重复'); details.push('存在重复表头字段'); }
-  if (s.dateWarnings > 0) { categories.push('日期字段警告'); details.push('日期单元格 ' + s.dateWarnings + ' 个'); }
-  const missingCount = clean.blocksMissing.length;
-  return {
-    show: missingCount > 0 || categories.length > 0,
-    missingCount: missingCount,
-    categoryCount: categories.length,
-    categories: categories,
-    details: details
-  };
-}
-
-function warnBannerHTML() {
-  const w = warningSummary();
-  if (!w.show) return '';
-  let text = '';
-  if (w.missingCount > 0) text += '存在 ' + w.missingCount + ' 个缺失区块';
-  if (w.categoryCount > 0) text += (text ? '、' : '存在 ') + w.categoryCount + ' 类数据质量问题';
-  return '<div class="warn-banner" role="status" aria-live="polite">' +
-    '<details><summary>' + esc(text + '，请查看数据质量说明') + '</summary>' +
-    '<ul class="plain-list">' + w.categories.map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') +
-    '</ul></details></div>';
-}
-
 function blockNOf(result, blockName) {
   for (let i = 0; i < result.blockLists.length; i++) {
     if (result.blockLists[i].name === blockName) return result.blockLists[i].n;
@@ -1938,160 +1807,10 @@ function blockNOf(result, blockName) {
   return 0;
 }
 
-function overviewHTML(result) {
+function tipsHTML(result) {
   const clean = state.clean;
   const kw = state.hasKeywordField ? (result.keyword === UNLABELED_KW ? '未标注关键词' : result.keyword) : (clean.derivedKeyword || SINGLE_KW);
-  return '<section class="card" id="card-overview">' +
-    '<div class="card-head"><h2>总览摘要</h2><span class="meta">当前关键词：' + esc(kw) + '</span></div>' +
-    warnBannerHTML() +
-    '<div class="metric-grid">' +
-    '<div class="metric"><div class="num">' + esc(kw) + '</div><div class="lab">当前关键词</div></div>' +
-    '<div class="metric"><div class="num">' + clean.kept.length + '</div><div class="lab">有效记录总数</div><div class="sub">清洗保留</div></div>' +
-    '<div class="metric"><div class="num">' + clean.blocksPresent.length + '</div><div class="lab">存在区块数</div><div class="sub">含 n=0 区块</div></div>' +
-    '<div class="metric"><div class="num">' + clean.blocksMissing.length + '</div><div class="lab">缺失区块数</div><div class="sub">共 ' + STANDARD_BLOCK_COUNT + ' 个标准区块</div></div>' +
-    '<div class="metric"><div class="num">' + result.superCount + '</div><div class="lab">R&gt;100% 记录数</div><div class="sub">二级混合总榜超常发挥</div></div>' +
-    '</div></section>';
-}
-
-function anomalyDetails(label, statsKey, clean) {
-  const items = clean.anomalies[statsKey] || [];
-  let count = Number(clean.stats[statsKey] || 0);
-  if (statsKey === 'keywordNullRatio') count = items.length ? 1 : 0;
-  if (statsKey === 'extraCols') count = clean.stats.extraCols || 0;
-  let extra = '';
-  if (statsKey === 'shareConverted' && clean.samples.shareConverted.length) {
-    extra = '<div class="truncate">原值样本：' + esc(clean.samples.shareConverted.join('、')) + '</div>';
-  }
-  if (statsKey === 'tgiPct' && clean.samples.tgiPct.length) {
-    extra = '<div class="truncate">原值样本：' + esc(clean.samples.tgiPct.join('、')) + '</div>';
-  }
-  const shown = items.slice(0, LIST_TRUNCATE);
-  let body = '';
-  if (shown.length) {
-    body = '<ul>' + shown.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
-    if (shown.length >= LIST_TRUNCATE && count > shown.length) {
-      body += '<div class="truncate">仅展示前 ' + LIST_TRUNCATE + ' 条</div>';
-    }
-  }
-  return '<details class="anomaly"><summary><span>' + esc(label) + '</span><span class="cnt">' + count + ' 条</span></summary>' + body + extra +
-    (body || extra ? '' : '<div class="truncate">无记录</div>') + '</details>';
-}
-
-function qualityHTML(result) {
-  const clean = state.clean;
-  const fm = clean.fieldMatch;
-  const matchedLine = fm.matched.map(function (m) {
-    return '<span class="badge ok">' + esc(m.label) + ' → 列 ' + (m.col + 1) + '「' + esc(m.text) + '」</span>';
-  }).join(' ');
-  const unmatchedLine = fm.hasKeywordField ? '无'
-    : (clean.derivedKeyword
-      ? '<span class="badge ok">关键词（未提供，取自文件名）：' + esc(clean.derivedKeyword) + '</span>'
-      : '<span class="badge warn">关键词（未提供，按单关键词处理）</span>');
-  const dupLine = fm.duplicates.length ? fm.duplicates.map(function (d) { return '<span class="badge warn">' + esc(d) + '</span>'; }).join(' ') : '无';
-  const dateLine = clean.stats.dateWarnings > 0 ? '<span class="badge warn">日期字段警告：' + clean.stats.dateWarnings + ' 处已格式化为 YYYY-MM-DD</span>' : '无';
-
-  const presentList = clean.blocksPresent.map(function (b) {
-    const n = blockNOf(result, b);
-    return '<li class="ok">✓ ' + esc(b) + (n === 0 ? '（n=0）' : '（n=' + n + '）') + '</li>';
-  }).join('');
-  const missingList = clean.blocksMissing.map(function (b) {
-    return '<li class="miss">✗ ' + esc(b) + '（未提供数据，跳过该区块排名）</li>';
-  }).join('');
-
-  const statRows = [
-    ['空分类记录', clean.stats.emptyCategory],
-    ['占比缺失', clean.stats.shareMissing],
-    ['占比异常', clean.stats.shareInvalid],
-    ['占比自动转换', clean.stats.shareConverted],
-    ['TGI 缺失', clean.stats.tgiMissing],
-    ['TGI 异常（负数）', clean.stats.tgiNegative],
-    ['TGI 带百分号', clean.stats.tgiPct],
-    ['非标准区块', clean.stats.nonStandardBlock],
-    ['零值剔除', clean.stats.zeroValue],
-    ['TGI 异常（零值标记）', clean.stats.tgiZeroMark],
-    ['重复记录', clean.stats.duplicate],
-    ['父类重复', clean.stats.parentDup],
-    ['多余单元格已忽略', clean.stats.extraCols]
-  ].map(function (row) {
-    return '<tr class="' + (row[1] > 0 ? '' : 'zero') + '"><td>' + esc(row[0]) + '</td><td class="num">' + row[1] + '</td></tr>';
-  }).join('');
-
-  const hasUnderscore = clean.hasUnderscore;
-  const extraHints = [];
-  if (hasUnderscore) extraHints.push('检测到含下划线的分类按二级类目处理，需人工确认。');
-  if (clean.meta && clean.meta.merges) extraHints.push('检测到合并单元格，仅保留左上角值。');
-  extraHints.push('剔除原因按首次命中步骤归因；非标准区块计数仅统计占比/TGI 可解析的记录。');
-
-  function unavailableSection(label, kind) {
-    const total = result.unavailable[kind + 'Total'];
-    const items = result.unavailable[kind];
-    let body;
-    if (items.length) {
-      body = '<ul>' + items.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
-      if (total > items.length) body += '<div class="truncate">仅展示前 ' + LIST_TRUNCATE + ' 条</div>';
-    } else {
-      body = '<div class="truncate">无记录</div>';
-    }
-    return '<details class="anomaly"><summary><span>' + esc(label) + '</span><span class="cnt">' + total +
-      ' 条</span></summary>' + body + '</details>';
-  }
-
-  const unavailableHTML =
-    '<div class="sub-title">R 无法计算清单</div>' +
-    unavailableSection('父类重复', 'dup') +
-    unavailableSection('父类缺失', 'missing') +
-    unavailableSection('父类占比为 0', 'zero');
-
-  return '<section class="card" id="card-quality">' +
-    '<div class="card-head"><h2>数据质量说明</h2><span class="meta">文件共 ' + clean.totalRecords + ' 行，清洗保留 ' + clean.kept.length + ' 条</span></div>' +
-    '<div class="kv"><span class="k">已匹配字段</span>' + (matchedLine || '无') + '</div>' +
-    '<div class="kv"><span class="k">未匹配可选字段</span>' + unmatchedLine + '</div>' +
-    '<div class="kv"><span class="k">重复字段警告</span>' + dupLine + '</div>' +
-    '<div class="kv"><span class="k">空表头列</span><span class="badge">' + fm.emptyHeaderCols + ' 列</span>' +
-    '<span class="k">日期字段警告</span>' + dateLine + '</div>' +
-    extraHints.map(function (h) { return '<div class="card-note">' + esc(h) + '</div>'; }).join('') +
-    '<div class="sub-title">区块覆盖情况</div>' +
-    '<div class="block-coverage">' +
-    '<div class="coverage-list"><div class="t">存在区块（' + clean.blocksPresent.length + '）</div><ul>' + (presentList || '<li class="miss">无</li>') + '</ul></div>' +
-    '<div class="coverage-list"><div class="t">缺失区块（' + clean.blocksMissing.length + '）</div><ul>' + (missingList || '<li class="ok">无</li>') + '</ul></div>' +
-    '</div>' +
-    '<div class="sub-title">清洗统计</div>' +
-    '<div class="table-wrap" style="max-height:340px"><table class="stats-table"><thead><tr><th>统计项</th><th style="text-align:right">数量</th></tr></thead><tbody>' + statRows + '</tbody></table></div>' +
-    '<div class="sub-title">异常清单</div>' +
-    anomalyDetails('空分类记录', 'emptyCategory', clean) +
-    anomalyDetails('占比缺失', 'shareMissing', clean) +
-    anomalyDetails('占比异常', 'shareInvalid', clean) +
-    anomalyDetails('占比自动转换', 'shareConverted', clean) +
-    anomalyDetails('TGI 缺失', 'tgiMissing', clean) +
-    anomalyDetails('TGI 异常（负数）', 'tgiNegative', clean) +
-    anomalyDetails('TGI 带百分号', 'tgiPct', clean) +
-    anomalyDetails('非标准区块', 'nonStandardBlock', clean) +
-    anomalyDetails('零值剔除', 'zeroValue', clean) +
-    anomalyDetails('TGI 异常（零值标记）', 'tgiZeroMark', clean) +
-    anomalyDetails('重复记录', 'duplicate', clean) +
-    anomalyDetails('父类重复', 'parentDup', clean) +
-    anomalyDetails('多余单元格已忽略', 'extraCols', clean) +
-    anomalyDetails('日期字段警告', 'dateWarnings', clean) +
-    anomalyDetails('关键词空值比例过高', 'keywordNullRatio', clean) +
-    unavailableHTML +
-    '</section>';
-}
-
-function methodHTML() {
-  return '<section class="card method" id="card-method">' +
-    '<div class="card-head"><h2>方法参数说明</h2><span class="meta">固定口径，页面不可调</span></div>' +
-    '<dl>' +
-    '<dt>标准化方法（稳健标准化）</dt><dd>规模指标（原始占比）与偏好指标（原始 TGI）在各榜内分别做中位数 + IQR 稳健标准化：S = clamp(50 + 25×(x − 中位数) / IQR, 0, 100)。中位数映射 50 分，每 1 个 IQR 记 25 分（Q1 → 37.5、Q3 → 62.5）；超出 ±2 个 IQR（Tukey 栅栏外侧）的极端值截断为 0 或 100。IQR = Q3 − Q1（线性插值分位数）；若 IQR 为 0（该维取值全相同），该维统一记 50 分，且该维不参与四象限判定（不把全榜判为“高”）。</dd>' +
-    '<dt>两维等权</dt><dd>S 与 P 各占 50%（等权系数 0.5，不是业务拍定的权重）。稳健标准化保留“领先幅度”，同时让两维的离散度一致，因此量纲不同也能等权合成；原始量纲不可直接等权（区块间占比跨度差异极大）。</dd>' +
-    '<dt>综合得分</dt><dd>综合得分 = 0.5 × S + 0.5 × P，使用未舍入 S、P 计算；分数表达榜内相对水平（50 = 本榜中位水平），不是绝对优劣，跨榜不可比。</dd>' +
-    '<dt>四象限阈值</dt><dd>按各榜 S 中位数、P 中位数划分（榜内相对口径）：S ≥ S 中位数为高规模，P ≥ P 中位数为高偏好；HH 重点机会、HL 规模驱动需提升偏好、LH 偏好驱动适合精准渗透、LL 优先级较低；TGI &gt; 100 额外标注“偏好高于大盘”。若 S 或 P 任一维无差异（IQR=0），该榜不判定四象限，显示“该维无差异”。</dd>' +
-    '<dt>有效记录数分档</dt><dd>n ≥ 4 正常计算；2 ≤ n &lt; 4 正常计算并标注“样本较少，仅参考”；n &lt; 2 不计算 S/P/综合得分/排名/四象限，显示“—”“样本不足”。</dd>' +
-    '<dt>排名排序规则</dt><dd>综合得分降序 → 原始占比降序 → TGI 降序 → 分类名升序 → 原始行号升序；排名为顺序整数，不共享名次。</dd>' +
-    '<dt>基准选择</dt><dd>采用榜内稳健标准化，而非固定基准：固定基准需要多关键词历史分布语料，当前只有单关键词数据，无法给出稳定外部基准；榜内稳健标准化只依赖本榜，规则固定、可复现。若后续提供基准语料，可把中位数/IQR 换成基准的中位数/IQR，等权公式不变。</dd>' +
-    '<dt>记录口径</dt><dd>清洗保留记录 = 通过步骤 1–9 的记录（含 TGI 异常零值标记、父类重复、R 无法计算记录）；榜单有效记录 = 各榜可参与排名计算的记录（分区块榜排除 TGI 异常，内容浏览一级榜另排除父类重复，二级混合总榜再排除 R 无法计算记录）。</dd>' +
-    '<dt>占比口径</dt><dd>占比 = 1 视为 100%（0 &lt; 值 ≤ 1 直接使用）；带 % 的占比按百分比换算；1 &lt; 值 ≤ 100 视为疑似未带 %，自动除以 100 并计入“占比自动转换”。</dd>' +
-    '<dt>TGI 口径</dt><dd>TGI 带百分号（如 “120%”）已去除 % 并按数值 120 使用，请确认源数据口径。</dd>' +
-    '</dl></section>';
+  return '<div class="tips-row"><div class="tips-kw">' + esc(kw) + '</div><div class="tips-sub">当前关键词</div></div>';
 }
 
 function blockHint(blockName) {
@@ -2101,8 +1820,12 @@ function blockHint(blockName) {
   return '';
 }
 
+function safeAnchor(name) {
+  return 'block-' + String(name).replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+}
+
 function blockCardsHTML(result) {
-  let html = '<section id="card-blocks"><div class="sub-title" style="font-size:16px;margin:4px 0 12px">分区块综合排名</div>';
+  let html = '';
   let anyCard = false;
   result.blockLists.forEach(function (list) {
     if (state.clean.blocksPresent.indexOf(list.name) === -1) return;
@@ -2112,14 +1835,14 @@ function blockCardsHTML(result) {
     else if (list.n <= RANK_DISPLAY_LIMIT) metaText = '榜单有效记录 ' + list.n + ' 条，展示全部 ' + list.n + ' 条';
     else metaText = '榜单有效记录 ' + list.n + ' 条，展示 Top' + RANK_DISPLAY_LIMIT;
     const hint = blockHint(list.name);
-    html += '<div class="card" style="margin-bottom:16px">' +
+    html += '<section class="card" id="' + safeAnchor(list.name) + '">' +
       '<div class="card-head"><h2>' + esc(list.name) + '</h2><span class="meta">' + metaText + '</span></div>' +
       (hint ? '<div class="hint-bar">' + esc(hint) + '</div>' : '') +
       (list.n === 0 ? '<div class="card-note">该区块无榜单有效记录（n=0）</div>' : tableHTML(list, list.id)) +
-      '</div>';
+      '</section>';
   });
-  if (!anyCard) html += '<div class="card"><div class="card-note">所有标准区块均缺失数据。</div></div>';
-  return html + '</section>';
+  if (!anyCard) html = '<section class="card"><div class="card-note">所有标准区块均缺失数据。</div></section>';
+  return html;
 }
 
 function mixedHTML(result) {
@@ -2143,10 +1866,12 @@ function renderResults() {
   const result = currentResult();
   const nav = el('resultNav');
   const results = el('results');
+  const controlTips = el('controlTips');
   if (!result) {
     teardownNav();
-    results.innerHTML = '<div class="empty-state" id="emptyState">请上传数据文件后开始分析</div>';
+    results.innerHTML = '<div class="empty-state" id="emptyState">暂无数据，等待自动载入…</div>';
     nav.hidden = true;
+    if (controlTips) { controlTips.innerHTML = ''; controlTips.hidden = true; }
     return;
   }
   let idx = 0;
@@ -2156,30 +1881,37 @@ function renderResults() {
   });
   if (result.hasMixed) state.domIdMap.set(result.mixed.id, 'tbl-' + idx++);
 
-  results.innerHTML = overviewHTML(result) + qualityHTML(result) + methodHTML() +
-    blockCardsHTML(result) + mixedHTML(result);
+  results.innerHTML = blockCardsHTML(result) + mixedHTML(result);
+
+  if (controlTips) {
+    controlTips.innerHTML = tipsHTML(result);
+    controlTips.hidden = state.collapsed;
+  }
 
   state.domIdMap.forEach(function (domId, listId) {
     state.tableRegistry.set(domId, { listId: listId });
   });
   bindSortHandlers();
-  setupNav(result.hasMixed);
+  setupNav(result);
   refreshSticky();
 }
 
 /* ============================ 导航与吸顶偏移 ============================ */
 function stickyOffset() {
-  const topbar = document.querySelector('.topbar');
-  const control = el('control');
-  const nav = el('resultNav');
-  return (topbar ? topbar.offsetHeight : 56) + (control ? control.offsetHeight : 0) + (nav ? nav.offsetHeight : 0);
+  return state._stickyOffsetCache || 0;
 }
 
 function refreshSticky() {
   const topbar = document.querySelector('.topbar');
   const control = el('control');
-  const height = (topbar ? topbar.offsetHeight : 56) + (control ? control.offsetHeight : 0);
-  document.documentElement.style.setProperty('--sticky-h', height + 'px');
+  const nav = el('resultNav');
+  const topH = topbar ? topbar.offsetHeight : 48;
+  const controlH = control ? control.offsetHeight : 0;
+  const navH = nav ? nav.offsetHeight : 54;
+  // --sticky-h 只给 nav/error-bar 的 top 用（含 topbar+control，不含 nav 自身），避免循环依赖
+  document.documentElement.style.setProperty('--sticky-h', (topH + controlH) + 'px');
+  document.documentElement.style.setProperty('--nav-h', navH + 'px');
+  state._stickyOffsetCache = topH + controlH + navH;
 }
 
 function teardownNav() {
@@ -2189,20 +1921,28 @@ function teardownNav() {
   }
 }
 
-function setupNav(hasMixed) {
+function setupNav(result, refreshOnly) {
   const nav = el('resultNav');
-  const mixedLink = nav.querySelector('a[data-target="card-mixed"]');
-  mixedLink.style.display = hasMixed ? '' : 'none';
-  const visible = hasMixed ? 5 : 4;
-  nav.hidden = false;
-
-  const targets = [];
-  for (let i = 0; i < visible; i++) {
-    const a = nav.querySelectorAll('a')[i];
-    const id = a.getAttribute('data-target');
-    const node = el(id);
-    if (node) targets.push(node);
+  if (!refreshOnly) {
+    // 动态生成 nav items（提示已并入控制台，不再单独占位）
+    let html = '';
+    result.blockLists.forEach(function (list) {
+      if (state.clean.blocksPresent.indexOf(list.name) === -1) return;
+      const id = safeAnchor(list.name);
+      html += '<a href="#' + id + '" data-target="' + id + '">' + esc(list.name) + '</a>';
+    });
+    if (result.hasMixed) html += '<a href="#card-mixed" data-target="card-mixed">二级混合总榜</a>';
+    nav.innerHTML = html;
+    nav.hidden = false;
   }
+
+  // 建立 IntersectionObserver 同步高亮
+  const targets = [];
+  nav.querySelectorAll('a').forEach(function (a) {
+    const id = a.getAttribute('data-target');
+    const node = document.getElementById(id);
+    if (node) targets.push(node);
+  });
   teardownNav();
   const offset = stickyOffset() + 8;
   state.activeNavObserver = new IntersectionObserver(function (entries) {
@@ -2251,7 +1991,8 @@ function showLoading(keepPrevious) {
   }, 5000);
 }
 /* ============================ 主流程 ============================ */
-const CDN_OK = true;
+// CSV 解析使用内联解析器，不依赖 CDN；Excel 解析依赖 XLSX（未内置时会给出明确提示）。
+const CDN_OK = typeof XLSX !== 'undefined';
 
 function keywordOptionLabel(kw) {
   return kw === UNLABELED_KW ? '（未标注，建议核查源数据）' : kw;
@@ -2292,7 +2033,7 @@ function analyzeKeyword(kw, opts) {
     if (opts.resetScroll) scrollToResultsTop();
     return;
   }
-  const keepPrevious = !!document.querySelector('#results #card-overview');
+  const keepPrevious = !!document.querySelector('#results .card');
   setStatus('analyzing');
   showLoading(keepPrevious);
   const token = state.generation;
@@ -2367,12 +2108,12 @@ function resetForNewData() {
 }
 
 async function handleFile(file) {
-  if (!CDN_OK) {
-    showToast('依赖库加载失败，无法解析文件，请检查网络后刷新页面。');
-    return;
-  }
   const name = file && file.name ? file.name : '';
   const ext = name.indexOf('.') !== -1 ? name.split('.').pop().toLowerCase() : '';
+  if ((ext === 'xlsx' || ext === 'xls') && !CDN_OK) {
+    showToast('Excel 解析依赖未加载，暂不支持 .xlsx/.xls 文件，请改用 .csv 格式。');
+    return;
+  }
   if (file.size === 0) {
     showError('文件为空（0 字节），请重新选择。');
     setStatus('error');
@@ -2465,10 +2206,8 @@ function clearAll() {
   resetForNewData();
   teardownNav();
   clearError();
-  el('results').innerHTML = '<div class="empty-state" id="emptyState">请上传数据文件后开始分析</div>';
+  el('results').innerHTML = '<div class="empty-state" id="emptyState">数据已清空，等待新数据…</div>';
   el('resultNav').hidden = true;
-  el('fileInput').value = '';
-  el('fileInfo').textContent = '尚未选择文件';
   setStatus('idle');
 }
 
@@ -2490,6 +2229,7 @@ function buildExportRecords(result) {
     if (!state.clean.blocksPresent.some(function (b) { return b === list.name; })) return;
     list.rows.forEach(function (row) {
       out.push({
+        _sheet: list.name,
         keyword: result.keyword,
         listName: '分区块综合排名',
         group: list.name,
@@ -2510,6 +2250,7 @@ function buildExportRecords(result) {
   if (result.hasMixed) {
     result.mixed.rows.forEach(function (row) {
       out.push({
+        _sheet: '二级混合总榜',
         keyword: result.keyword,
         listName: '二级混合总榜',
         group: row.parentName || '',
@@ -2530,9 +2271,234 @@ function buildExportRecords(result) {
   return out;
 }
 
-function exportLine(rec) {
+function exportCells(rec) {
   return [rec.keyword, rec.listName, rec.group, rec.name, rec.share, rec.tgi, rec.R, rec.Rstatus,
-    rec.S, rec.P, rec.composite, rec.rank, rec.quad, rec.interp].map(csvCell).join(',');
+    rec.S, rec.P, rec.composite, rec.rank, rec.quad, rec.interp];
+}
+
+function exportLine(rec) {
+  return exportCells(rec).map(csvCell).join(',');
+}
+
+/* ---------------- 多 sheet Excel（OOXML .xlsx）导出 ---------------- */
+/* 按区块分 sheet，每个 sheet 名为区块名（地域分布-城市 / 年龄分布 / … / 二级混合总榜）。
+   用真正的 Office Open XML（.xlsx，ZIP 打包、STORED 不压缩），无需 CDN，
+   二进制格式无编码歧义，Excel / WPS / Google Sheets 均能正常打开，
+   避免 SpreadsheetML 文本在中文系统下被按 GBK 解析导致乱码。 */
+function xmlEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/\r/g, '&#13;').replace(/\n/g, '&#10;').replace(/\t/g, '&#9;');
+}
+
+function utf8Bytes(s) {
+  return new TextEncoder().encode(String(s == null ? '' : s));
+}
+
+/* 列号转字母：1->A, 26->Z, 27->AA */
+function colLetter(n) {
+  var s = '';
+  while (n > 0) {
+    var m = (n - 1) % 26;
+    s = String.fromCharCode(65 + m) + s;
+    n = Math.floor((n - 1) / 26);
+  }
+  return s;
+}
+
+function xlsxSheetXml(headers, rows) {
+  var xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  xml += '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+  var all = [headers].concat(rows);
+  for (var i = 0; i < all.length; i++) {
+    var r = i + 1;
+    xml += '<row r="' + r + '">';
+    var cells = all[i];
+    for (var j = 0; j < cells.length; j++) {
+      var v = cells[j];
+      if (v === null || v === undefined) v = '';
+      if (typeof v === 'number' && !isFinite(v)) v = '';
+      var sv = String(v);
+      if (/^[=+\-@\t\r]/.test(sv)) sv = "'" + sv; /* 公式注入防护 */
+      xml += '<c r="' + colLetter(j + 1) + r + '" t="inlineStr"><is><t xml:space="preserve">'
+        + xmlEsc(sv) + '</t></is></c>';
+    }
+    xml += '</row>';
+  }
+  xml += '</sheetData></worksheet>';
+  return xml;
+}
+
+/* CRC32（IEEE 802.3），用于 ZIP 校验和 */
+function crc32(bytes) {
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) {
+    crc ^= bytes[i];
+    for (var j = 0; j < 8; j++) {
+      crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function putU16(arr, off, v) { arr[off] = v & 0xFF; arr[off + 1] = (v >>> 8) & 0xFF; }
+function putU32(arr, off, v) { arr[off] = v & 0xFF; arr[off + 1] = (v >>> 8) & 0xFF; arr[off + 2] = (v >>> 16) & 0xFF; arr[off + 3] = (v >>> 24) & 0xFF; }
+
+/* 将多个文件打包成 ZIP（STORE，不压缩），返回 Uint8Array */
+function zipStore(files) {
+  var chunks = [];
+  var centralDir = [];
+  var offset = 0;
+  files.forEach(function (f) {
+    var nameBytes = utf8Bytes(f.name);
+    var data = f.data;
+    var crc = crc32(data);
+    var nameLen = nameBytes.length;
+    var lfh = new Uint8Array(30 + nameLen);
+    lfh[0] = 0x50; lfh[1] = 0x4b; lfh[2] = 0x03; lfh[3] = 0x04;
+    putU16(lfh, 4, 20);      /* version needed */
+    putU16(lfh, 6, 0);       /* flags */
+    putU16(lfh, 8, 0);       /* compression = STORED */
+    putU16(lfh, 10, 0);      /* mod time */
+    putU16(lfh, 12, 0);      /* mod date */
+    putU32(lfh, 14, crc);
+    putU32(lfh, 18, data.length);
+    putU32(lfh, 22, data.length);
+    putU16(lfh, 26, nameLen);
+    putU16(lfh, 28, 0);      /* extra len */
+    lfh.set(nameBytes, 30);
+    chunks.push(lfh);
+    chunks.push(data);
+
+    var cde = new Uint8Array(46 + nameLen);
+    cde[0] = 0x50; cde[1] = 0x4b; cde[2] = 0x01; cde[3] = 0x02;
+    putU16(cde, 4, 20);      /* version made by */
+    putU16(cde, 6, 20);      /* version needed */
+    putU16(cde, 8, 0);
+    putU16(cde, 10, 0);
+    putU16(cde, 12, 0);
+    putU16(cde, 14, 0);
+    putU32(cde, 16, crc);
+    putU32(cde, 20, data.length);
+    putU32(cde, 24, data.length);
+    putU16(cde, 28, nameLen);
+    putU16(cde, 30, 0);      /* extra */
+    putU16(cde, 32, 0);      /* comment */
+    putU16(cde, 34, 0);      /* disk number */
+    putU16(cde, 36, 0);      /* internal attrs */
+    putU32(cde, 38, 0);      /* external attrs */
+    putU32(cde, 42, offset);
+    cde.set(nameBytes, 46);
+    centralDir.push(cde);
+
+    offset += lfh.length + data.length;
+  });
+
+  var cdSize = 0;
+  for (var k = 0; k < centralDir.length; k++) cdSize += centralDir[k].length;
+
+  var eocd = new Uint8Array(22);
+  eocd[0] = 0x50; eocd[1] = 0x4b; eocd[2] = 0x05; eocd[3] = 0x06;
+  putU16(eocd, 4, 0);
+  putU16(eocd, 6, 0);
+  putU16(eocd, 8, files.length);
+  putU16(eocd, 10, files.length);
+  putU32(eocd, 12, cdSize);
+  putU32(eocd, 16, offset);
+  putU16(eocd, 20, 0);
+
+  var total = offset + cdSize + eocd.length;
+  var out = new Uint8Array(total);
+  var pos = 0;
+  for (var a = 0; a < chunks.length; a++) { out.set(chunks[a], pos); pos += chunks[a].length; }
+  for (var b = 0; b < centralDir.length; b++) { out.set(centralDir[b], pos); pos += centralDir[b].length; }
+  out.set(eocd, pos);
+  return out;
+}
+
+function bytesToBase64(bytes) {
+  var bin = '';
+  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function buildMultiSheetXlsx(result, records, headers) {
+  /* 按 sheet 分组，顺序固定为 STANDARD_BLOCKS + 二级混合总榜。
+     区块 sheet 去掉 R / R 状态两列（只有二级混合总榜有 R 值），混合总榜保留完整列。 */
+  var R_IDX = headers.indexOf('R');          /* 第7列 */
+  var RSTATUS_IDX = headers.indexOf('R状态'); /* 第8列 */
+  var blockColIdx = headers.map(function (_, i) { return i; })
+    .filter(function (i) { return i !== R_IDX && i !== RSTATUS_IDX; });
+  var blockHeaders = blockColIdx.map(function (i) { return headers[i]; });
+
+  function pickCols(cells) {
+    return blockColIdx.map(function (i) { return cells[i]; });
+  }
+
+  var sheetMap = {};
+  records.forEach(function (r) {
+    if (!sheetMap[r._sheet]) sheetMap[r._sheet] = [];
+    sheetMap[r._sheet].push(r);
+  });
+  var sheets = [];
+  STANDARD_BLOCKS.forEach(function (b) {
+    if (sheetMap[b]) sheets.push({
+      name: b,
+      headers: blockHeaders,
+      rows: sheetMap[b].map(exportCells).map(pickCols)
+    });
+  });
+  if (sheetMap['二级混合总榜']) sheets.push({
+    name: '二级混合总榜',
+    headers: headers,
+    rows: sheetMap['二级混合总榜'].map(exportCells)
+  });
+
+  var files = [];
+  /* [Content_Types].xml */
+  var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Default Extension="xml" ContentType="application/xml"/>'
+    + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>';
+  sheets.forEach(function (s, i) {
+    ct += '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+  });
+  ct += '</Types>';
+  files.push({ name: '[Content_Types].xml', data: utf8Bytes(ct) });
+
+  /* _rels/.rels */
+  files.push({ name: '_rels/.rels', data: utf8Bytes(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+    + '</Relationships>') });
+
+  /* xl/workbook.xml */
+  var wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+    + 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
+  sheets.forEach(function (s, i) {
+    wb += '<sheet name="' + xmlEsc(s.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>';
+  });
+  wb += '</sheets></workbook>';
+  files.push({ name: 'xl/workbook.xml', data: utf8Bytes(wb) });
+
+  /* xl/_rels/workbook.xml.rels */
+  var wbr = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  sheets.forEach(function (s, i) {
+    wbr += '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+  });
+  wbr += '</Relationships>';
+  files.push({ name: 'xl/_rels/workbook.xml.rels', data: utf8Bytes(wbr) });
+
+  /* xl/worksheets/sheetN.xml */
+  sheets.forEach(function (s, i) {
+    files.push({ name: 'xl/worksheets/sheet' + (i + 1) + '.xml', data: utf8Bytes(xlsxSheetXml(s.headers, s.rows)) });
+  });
+
+  return zipStore(files);
 }
 
 function exportProgressNode(show, pct) {
@@ -2565,41 +2531,24 @@ async function exportCSV() {
     showToast('当前关键词无有效数据，无法导出。');
     return;
   }
-  const total = records.length;
-  const useBatches = total > EXPORT_PROGRESS_ROWS;
-  if (useBatches) exportProgressNode(true, 0);
   const HEADERS = ['关键词', '榜单名称', '分组名', '分类名', '原始占比', '原始TGI', 'R', 'R状态',
     '规模分S（稳健标准化）', '偏好分P（稳健标准化）', '综合得分（稳健等权）', '榜单内排名', '四象限标签', '一句解读'];
-  const parts = [HEADERS.map(csvCell).join(',')];
-  const batchSize = 2000;
-  let aborted = false;
-  for (let i = 0; i < total; i += batchSize) {
-    if (token.gen !== state.generation || token.keyword !== state.currentKeyword) {
-      aborted = true;
-      break;
-    }
-    const batch = records.slice(i, i + batchSize);
-    parts.push(batch.map(exportLine).join('\n'));
-    if (useBatches) {
-      exportProgressNode(true, Math.round(Math.min(1, (i + batch.length) / total) * 100));
-      await new Promise(function (r) { setTimeout(r, 0); });
-    }
-  }
   exportProgressNode(false, 0);
-  if (aborted) return;
-  const csv = '\uFEFF' + parts.join('\n');
+  if (token.gen !== state.generation || token.keyword !== state.currentKeyword) return;
+  /* 按区块分 sheet 生成真正的 .xlsx（OOXML），避免全部区块挤在一张表里，且二进制格式无编码乱码问题。 */
+  const xlsxBytes = buildMultiSheetXlsx(result, records, HEADERS);
   const safeName = String(state.currentKeyword || 'result').replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_').slice(0, 80) || 'result';
-  const fileName = 'keyword-ranking-' + safeName + '.csv';
+  const fileName = '抖音指数_' + safeName + '_综合排名.xlsx';
   /* WebView 内 <a download> 不会真正落盘，优先交给原生桥写入系统下载目录；
+     .xlsx 是二进制，用 base64 字符串传给原生侧解码，避免字符串桥损坏字节。
      在普通浏览器打开时退回 Blob 下载。 */
   if (window.DyRankingBridge && typeof window.DyRankingBridge.exportCsv === 'function') {
     try {
-      window.DyRankingBridge.exportCsv(csv, fileName);
-      showToast('已导出到系统下载目录：' + fileName);
+      window.DyRankingBridge.exportCsv(bytesToBase64(xlsxBytes), fileName);
       return;
     } catch (e) { /* 桥调用失败时退回浏览器下载 */ }
   }
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob([xlsxBytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -2614,51 +2563,18 @@ async function exportCSV() {
 function setCollapsed(collapsed) {
   state.collapsed = collapsed;
   el('control').classList.toggle('collapsed', collapsed);
-  el('controlSummary').classList.toggle('show', collapsed);
+  const ct = el('controlTips');
+  if (ct) ct.hidden = collapsed;
   el('collapseBtn').textContent = collapsed ? '展开控制区' : '收起控制区';
   el('collapseBtn').setAttribute('aria-expanded', String(!collapsed));
   refreshSticky();
-  if (state.status === 'success' && currentResult()) setupNav(currentResult().hasMixed);
-}
-
-function pickFile() {
-  if (!CDN_OK) {
-    showToast('依赖库加载失败，无法解析文件，请检查网络后刷新页面。');
-    return;
-  }
-  el('fileInput').click();
-}
-
-function onFilesChosen(files) {
-  if (!files || files.length === 0) return;
-  if (files.length > 1) showToast('一次只能上传一个文件，已取第一个');
-  handleFile(files[0]);
-  el('fileInput').value = '';
+  if (state.status === 'success' && currentResult()) setupNav(currentResult(), true);
 }
 
 function bindEvents() {
-  el('pickBtn').addEventListener('click', pickFile);
-  el('fileInput').addEventListener('change', function (e) {
-    onFilesChosen(e.target.files);
-  });
-
-  const dz = el('dropzone');
-  dz.addEventListener('dragover', function (e) {
-    e.preventDefault();
-    if (CDN_OK && state.status !== 'parsing' && state.status !== 'analyzing') dz.classList.add('drag');
-  });
-  dz.addEventListener('dragleave', function () { dz.classList.remove('drag'); });
-  dz.addEventListener('drop', function (e) {
-    e.preventDefault();
-    dz.classList.remove('drag');
-    if (!CDN_OK) { showToast('依赖库加载失败，无法解析文件，请检查网络后刷新页面。'); return; }
-    if (state.status === 'parsing' || state.status === 'analyzing') return;
-    onFilesChosen(e.dataTransfer.files);
-  });
-
   el('sampleBtn').addEventListener('click', loadSample);
   el('reanalyzeBtn').addEventListener('click', function () {
-    if (!state.clean) { showToast('请先上传数据文件'); return; }
+    if (!state.clean) { showToast('尚未载入数据，请返回抓取后重试'); return; }
     state.resultCache.delete(state.currentKeyword);
     analyzeKeyword(state.currentKeyword, { resetScroll: true });
   });
@@ -2666,7 +2582,6 @@ function bindEvents() {
   el('clearBtn').addEventListener('click', clearAll);
 
   el('collapseBtn').addEventListener('click', function () { setCollapsed(!state.collapsed); });
-  el('expandBtn').addEventListener('click', function () { setCollapsed(false); });
 
   el('kwSelect').addEventListener('change', function (e) {
     const kw = e.target.value;
@@ -2690,7 +2605,7 @@ function bindEvents() {
     if (resizeTimer) clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
       refreshSticky();
-      if (state.status === 'success' && currentResult()) setupNav(currentResult().hasMixed);
+      if (state.status === 'success' && currentResult()) setupNav(currentResult(), true);
     }, 120);
   });
 }
@@ -2763,6 +2678,7 @@ window.__autoLoadRanking = function () {
 };
 
 function init() {
+  setCollapsed(true);
   bindEvents();
   /* 「返回抓取」走原生桥关闭本 Activity；浏览器直开时退回历史。 */
   const backBtn = el('backBtn');

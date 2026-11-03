@@ -9,6 +9,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.util.Base64;
+import android.util.Log;
+import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -67,7 +70,14 @@ public class RankingActivity extends Activity {
                 injectCsv();
             }
         });
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage cm) {
+                // 把页面 console 输出转进 logcat，方便排查分析/导出问题
+                Log.i("DyRankJS", cm.message());
+                return true;
+            }
+        });
         webView.loadUrl("file:///android_asset/ranking.html");
     }
 
@@ -86,20 +96,27 @@ public class RankingActivity extends Activity {
     // ===== 页面 -> 原生 的回传桥（页面里的 window.DyRankingBridge）=====
     private class DyRankingBridge {
 
-        // 页面「导出结果 CSV」：WebView 内 <a download> 不会真正落盘，交由原生写入系统下载目录。
-        // 传入的 text 已由页面侧拼上 UTF-8 BOM，这里直接写入即可，不再重复加 BOM。
+        // 页面「导出结果」：WebView 内 <a download> 不会真正落盘，交由原生写入系统下载目录。
+        // .xlsx 为二进制 ZIP，页面侧用 base64 传入，这里解码后写入；.csv/.xml 为文本，直接 UTF-8 编码。
         @JavascriptInterface
         public void exportCsv(String text, String name) {
             if (text == null) text = "";
             String fileName = (name == null || name.isEmpty()) ? "keyword-ranking.csv" : name;
+            String lower = fileName.toLowerCase();
+            boolean isXlsx = lower.endsWith(".xlsx");
+            String mime = isXlsx
+                    ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    : (lower.endsWith(".xls") ? "application/vnd.ms-excel" : "text/csv");
             try {
-                byte[] data = text.getBytes(StandardCharsets.UTF_8);
+                byte[] data = isXlsx
+                        ? Base64.decode(text, Base64.DEFAULT)
+                        : text.getBytes(StandardCharsets.UTF_8);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     Uri target = findDownloadsFile(fileName);
                     if (target == null) {
                         ContentValues values = new ContentValues();
                         values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                        values.put(MediaStore.MediaColumns.MIME_TYPE, "text/csv");
+                        values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
                         values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
                         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
                         target = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
@@ -128,6 +145,7 @@ public class RankingActivity extends Activity {
                     toast("已导出到应用下载目录：" + fileName);
                 }
             } catch (Throwable t) {
+                Log.e("DyRank", "导出失败：" + t.getMessage(), t);
                 toast("导出失败：" + t.getMessage());
             }
         }
