@@ -133,7 +133,14 @@ public final class Updater {
         final SharedPreferences sp = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         final long now = System.currentTimeMillis();
 
-        if (!manual && now - sp.getLong(KEY_LAST_CHECK, 0L) < AUTO_INTERVAL_MS) return;
+        // DEBUG: 测试自动更新时临时把节流降到 30s，验证完改回 AUTO_INTERVAL_MS
+        final long throttleMs = manual ? 0 : 30L * 1000;
+
+        if (!manual && now - sp.getLong(KEY_LAST_CHECK, 0L) < throttleMs) {
+            android.util.Log.i("DyUpdater", "throttled, skip (last="
+                    + sp.getLong(KEY_LAST_CHECK, 0L) + " now=" + now + ")");
+            return;
+        }
 
         if (!sChecking.compareAndSet(false, true)) {
             if (manual) toast(app, "正在检查更新，请稍候…");
@@ -149,6 +156,8 @@ public final class Updater {
                     // 无论成功与否都记录时间：否则离线时每次冷启动都会重发请求。
                     sp.edit().putLong(KEY_LAST_CHECK, now).apply();
                     final Release r = fetchLatest();
+                    android.util.Log.i("DyUpdater", "fetchLatest result="
+                            + (r == null ? "null" : "tag=" + r.tag + " version=" + r.version));
                     if (r == null) {
                         if (manual) {
                             toast(app, "检查更新失败：拿不到发布信息。若仓库仍为私有，请先设为公开后再试");
@@ -170,6 +179,7 @@ public final class Updater {
                         @Override
                         public void run() {
                             if (activity.isFinishing()) return;
+                            android.util.Log.i("DyUpdater", "starting auto download for " + r.tag);
                             startDownload(activity, r);
                             sp.edit().putString(KEY_AUTO_TAG, r.tag).apply();
                             toast(app, "发现新版本 " + r.version + "，后台下载中…");
