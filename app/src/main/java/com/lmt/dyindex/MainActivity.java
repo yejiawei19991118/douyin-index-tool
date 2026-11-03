@@ -135,6 +135,27 @@ public class MainActivity extends Activity {
             "if(b.indexOf('加载中')>=0&&b.length<300){s+=2;if(s>=16)r('stuck-loading');}" +
             "else{s=0;}}catch(e){}},2000);" +
             "})();";
+    // 修复「点开视频卡片后永久显示加载中...」。
+    // 抖音创作者中心壳层（shell）加载用户信息时会用 post-robot 向 window.parent 发
+    // 「getShareScene」请求。App 用 WebView 直接承载页面，页面本身就在顶层
+    // （window.parent === window），没有父窗口应答；该版本 post-robot 的 RES_TIMEOUT 为 -1，
+    // 且 send() 在目标窗口 readyPromise 未就绪时会先等它（只由收到 hello 才 resolve），
+    // 于是该 Promise 永久 pending → loginType 永远不落地 → 顶层只渲染「加载中...」。
+    // 早于页面 JS 把父窗口的 readyPromise 预热成 resolved，send 便会立即发出并走正常兜底，
+    // 页面可正常渲染。仅顶层窗口需要，脚本幂等且轮询到 post-robot 出现为止。
+    private static final String POSTROBOT_READY_SEED =
+            "(function(){try{" +
+            "if(window.__dyReadySeed)return;window.__dyReadySeed=1;" +
+            "if(window.top!==window||window.parent!==window)return;" +
+            "var done=false,n=0,iv=setInterval(function(){try{" +
+            "if(done)return;" +
+            "var pr=window.__postRobot__;" +
+            "if(!pr||!pr.readyPromises){if(++n>200){clearInterval(iv);}return;}" +
+            "done=true;clearInterval(iv);" +
+            "pr.readyPromises.set(window.parent,Promise.resolve({origin:location.origin}));" +
+            "console.log('[DyReady] seeded parent ready promise');" +
+            "}catch(e){console.log('[DyReady] err '+(e&&e.message));}},25);" +
+            "}catch(e){}})();";
     private final Runnable loadTimeoutRunnable = new Runnable() {
         @Override
         public void run() {
@@ -375,6 +396,8 @@ public class MainActivity extends Activity {
                 view.evaluateJavascript(SVG_CLASSNAME_POLYFILL, null);
                 // 注入「chunk 加载失败 / 卡死自动 reload」恢复脚本，同样需早于页面自身 JS。
                 view.evaluateJavascript(STUCK_PAGE_RECOVERY, null);
+                // 预热 post-robot 的父窗口 readyPromise，修复点开视频卡片后卡在「加载中」。
+                view.evaluateJavascript(POSTROBOT_READY_SEED, null);
             }
 
             @Override
@@ -382,6 +405,8 @@ public class MainActivity extends Activity {
                 ui.removeCallbacks(loadTimeoutRunnable);
                 // 登录跳回后会写入新的登录 Cookie；立即 flush 落盘，避免本次进程被回收后登录态丢失。
                 CookieManager.getInstance().flush();
+                // 兜底再注入一次：SPA 路由切换不触发 onPageStarted，页面内导航下也需预热。
+                view.evaluateJavascript(POSTROBOT_READY_SEED, null);
                 injectExtractor();
                 // 登录页无需卡死检测（等用户扫码即可），其它页面启动 20s 看门狗。
                 final boolean isLogin = url != null
@@ -579,6 +604,8 @@ public class MainActivity extends Activity {
                 webView.evaluateJavascript("!!window.__dyInjected", value -> {
                     if (value == null || value.contains("false")) injectExtractor();
                 });
+                // SPA 路由切换不会触发 onPageStarted/onPageFinished，轮询兜底预热 readyPromise。
+                webView.evaluateJavascript(POSTROBOT_READY_SEED, null);
             }
             ui.postDelayed(this, 2500);
         }
