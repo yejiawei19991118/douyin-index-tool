@@ -87,8 +87,6 @@ public class MainActivity extends Activity {
     private String extractJs;
     private volatile String lastCsv;
     private volatile int lastRowCount;
-    // 最近一次抓取的诊断快照（脚本实际看到的标题/图表/性别文本），出错时供排查。
-    private volatile String lastDebug;
     // 当前抓取模式（默认关键词）。
     private int mode = MODE_KEYWORD;
     private final Button[] modeChips = new Button[MODE_LABELS.length];
@@ -265,15 +263,6 @@ public class MainActivity extends Activity {
         });
         top.addView(openBtn, new LinearLayout.LayoutParams(dp(82), fieldH));
 
-        // 手动检查新版本（启动时也会静默查一次，这里用于「更新」入口常驻可点）。
-        Button updateBtn = actionButton("更新", false, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { Updater.checkAndPrompt(MainActivity.this, true); }
-        });
-        LinearLayout.LayoutParams ulp = new LinearLayout.LayoutParams(dp(64), fieldH);
-        ulp.leftMargin = dp(8);
-        top.addView(updateBtn, ulp);
-
         keywordInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent e) {
@@ -340,18 +329,12 @@ public class MainActivity extends Activity {
             @Override
             public void onClick(View v) { openRanking(); }
         });
-        // 诊断：把最近一次抓取脚本「实际看到的内容」复制到剪贴板，便于定位采集失败原因。
-        Button debugBtn = actionButton("诊断", false, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) { copyDebug(); }
-        });
 
-        // 五个按钮等宽排布，点击区域整齐且互不挤压。
+        // 四个按钮等宽排布，点击区域整齐且互不挤压。
         addWeighted(row, runBtn, 0);
         addWeighted(row, copyBtn, dp(8));
         addWeighted(row, exportBtn, dp(8));
         addWeighted(row, rankingBtn, dp(8));
-        addWeighted(row, debugBtn, dp(8));
         setCopyEnabled(false);
 
         root.addView(hDivider(), new LinearLayout.LayoutParams(
@@ -624,14 +607,6 @@ public class MainActivity extends Activity {
         toast("CSV 已复制到剪贴板");
     }
 
-    private void copyDebug() {
-        String d = lastDebug;
-        if (d == null || d.isEmpty()) { toast("暂无诊断信息，请先抓取一次"); return; }
-        ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        cb.setPrimaryClip(ClipData.newPlainText("抓取诊断", d));
-        toast("诊断信息已复制到剪贴板");
-    }
-
     private void exportCsv() {
         String csv = lastCsv;
         if (csv == null || csv.isEmpty()) { toast("还没有可导出的结果"); return; }
@@ -752,20 +727,17 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void onResult(String json) {
             try {
-                // 把完整诊断快照（含 DOM dump / canvas probe）打到 logcat，
-                // 方便 adb 直接抓根因证据，无需额外桥接层。
+                // 把完整抓取结果（含 DOM dump / canvas probe）打到 logcat，
+                // 方便 adb 直接抓根因证据。
                 android.util.Log.i("DyIndexJS", "RESULT_SNAPSHOT: " + json);
                 JSONObject o = new JSONObject(json);
                 final String csv = o.optString("csv", "");
                 final int rows = o.optInt("rowCount", 0);
                 String kw = o.optString("keyword", "");
                 if (!kw.isEmpty()) keywordCache = kw;
-                // 诊断快照先存下来：即使这次没采到数据，也能通过「诊断」按钮看到脚本实际所见。
-                String dbg = o.optString("debug", "");
-                if (!dbg.isEmpty()) lastDebug = dbg;
                 if (csv.isEmpty() || rows == 0) {
-                    setStatus("未采集到数据，请点「诊断」查看脚本实际所见");
-                    toast("未采集到数据：请确认已登录处于人群分析页，并点「诊断」排查");
+                    setStatus("未采集到数据，请确认已登录且处于人群分析页");
+                    toast("未采集到数据：请确认已登录处于人群分析页");
                     return;
                 }
                 lastCsv = csv;
