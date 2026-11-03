@@ -19,7 +19,7 @@
 | 导航与进度 | `WebViewClient.onPageFinished`、`onProgressChanged`、`onConsoleMessage` | 页面完成即注入脚本；加载百分比可视化；页面 JS 报错转 logcat（tag `DyIndexJS`） |
 | 状态栏组件 | `statusView`、`setStatus()` | 单行 + 省略号，汇报加载进度 / 空数据 / 抓取结果 |
 | 操作按钮组 | `runBtn`、`copyBtn`、`exportBtn`、`rankingBtn`、`debugBtn` | 开始抓取 / 复制 / 导出 CSV / **综合排名** / 诊断，五个按钮等宽排布；「综合排名」在抓取成功后自动跳转（也可手动点） |
-| 注入与保活 | `injectExtractor()`、`pollReinject` | 注入 assets 脚本；每 2.5s 轮询补注入，应对 SPA 路由重置导致脚本丢失 |
+| 注入与保活 | `injectExtractor()`、`pollReinject` | 注入 assets 脚本；每 2.5s 轮询补注入，应对 SPA 路由重置导致脚本丢失；**仅前台轮询**（`onPause` 停止、`onResume` 恢复），切后台（如打开排名页）时停止以省电省 CPU |
 | 数据导出 | `exportCsv()`、`writeToDownloads()`、`findDownloadsFile()` | MediaStore 写入系统「下载」目录，带 UTF-8 BOM；同名文件复用 Uri 覆盖写入，不产生重复文件；文件名规则见 `CsvUtils.fileNameFor` |
 | 剪贴板组件 | `copyCsv()`、`copyDebug()` | 复制 CSV；复制抓取诊断快照 |
 | UI 样式工具 | `bg()`、`actionButton()`、`hDivider()`、`addWeighted()`、`setCopyEnabled()`、`dp()` | 圆角背景 / 主次按钮样式 / 分割线 / 等宽排布 / 禁用态置灰 / dp 换算 |
@@ -62,7 +62,7 @@
 | 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 启动静默查（6h 节流）、`manual=true` 用户点「更新」（无视节流并回提示）；有新版才弹窗；私有仓库 404 给可读提示而非崩溃 |
 | 版本比对 | `Updater.parseRelease()` + `VersionUtils` | 取 `tag_name` 规整后与当前 `versionName` 比较；从 `assets` 挑 `.apk`（优先带 `release` 字样）与 `.apk.sha256` |
 | 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置）；下载到应用私有 `updates/` 目录；下载前清理遗留安装包 |
-| 校验与安装 | `Updater.handleIfFinished()` | 下载完成广播 / onResume 补装两路；SHA-256 摘要校验 → 签名兼容性比对 → 调起系统安装器；签名不一致时引导卸载重装 |
+| 校验与安装 | `Updater.handleIfFinished()` | 下载完成广播 / onResume 补装两路；SHA-256 摘要校验 → 签名兼容性比对 → 调起系统安装器；签名不一致时引导卸载重装；**所有 UI 回调（runOnUiThread / 弹对话框）均先判 `isFinishing() || isDestroyed()`**，避免 Activity 销毁后崩溃 |
 | 安装包共享 | `ApkFileProvider`（authority `${applicationId}.apk`） | 自建极简 ContentProvider，以 content:// 只读形式把 APK 交给系统安装器（替代需要 androidx 的 FileProvider） |
 | 断点接续 | `Updater.resumePendingInstall()` + `SharedPreferences` | 进程若在下载期间被回收，onResume 依据持久化的下载 id 接续校验与安装 |
 | 清单声明 | `AndroidManifest.xml` | `REQUEST_INSTALL_PACKAGES` 权限 + `<provider>` 声明 |
@@ -98,10 +98,11 @@
 | --- | --- | --- |
 | 页面承载 | `RankingActivity.onCreate` | 全屏 WebView 加载 `file:///android_asset/ranking.html`；页面就绪后 `evaluateJavascript` 调 `window.loadFromCsv(csv, keyword)` 自动分析 |
 | 数据入口 | `window.loadFromCsv()` / `parseCsvText()` | 原生传入 CSV 文本 → 内置 RFC4180 解析器（无第三方依赖）→ `buildTable` → `processTable`；自动完成清洗、打分、四象限、二级混合榜 |
-| 原生回传桥 | `DyRankingBridge`（`window.DyRankingBridge`） | `exportCsv(text, name)`：页面「导出结果 CSV」交由原生写入系统下载目录（WebView 内 `<a download>` 不落盘）；`close()`：「返回抓取」关闭本 Activity |
+| 原生回传桥 | `DyRankingBridge`（`window.DyRankingBridge`） | `exportCsv(text, name)`：页面「导出结果」交由原生写入系统下载目录；`.xlsx` 走 base64 解码后二进制写入，`.csv` 走 UTF-8 字节写入；成功/失败由原生 Toast 单条提示（WebView 内 `<a download>` 不落盘）；`close()`：「返回抓取」关闭本 Activity |
+| 多 Sheet 导出 | `buildMultiSheetXlsx()`、`xlsxSheetXml()` | 纯 JS OOXML 生成器（crc32 + zip STORED + inline strings），一个区块一个 sheet；区块 sheet 隐藏 R/R状态 两列，**二级混合总榜** sheet 保留全部 14 列；仅对有数据的区块生成 sheet |
 | 排名算法 | `cleanData` / `robustScores` / `buildList` / `buildKeywordResult` / `computeR` | 9 步数据清洗；占比→规模分 S、TGI→偏好分 P（稳健标准化：中位数 50、每 IQR=25 分）；composite = 0.5S + 0.5P 等权合成；四象限（HH 重点机会 / HL / LH / LL）；兴趣子类 R = 子类占比/父类占比×100，>100 标「超常发挥」 |
 | 标准区块 | `STANDARD_BLOCKS` | 地域分布-城市/城市级别/省份、年龄分布、性别分布、用户内容浏览分布、手机价格分布、手机品牌分布；缺失区块在覆盖率中如实标注 |
-| 资产独立性 | `ranking.html` | 已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行 |
+| 资产独立性 | `ranking.html` | 已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行；CSV 解析统一走内联 `parseCsvText`（不依赖 PapaParse），Excel 解析在 XLSX 未加载时给出明确提示而非崩溃 |
 
 ---
 
