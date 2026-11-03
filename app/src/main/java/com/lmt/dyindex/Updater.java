@@ -71,6 +71,8 @@ public final class Updater {
     private static final String KEY_LAST_CHECK = "last_check";
     /** 用户选择「稍后」的 tag，同一版本不再重复打扰。 */
     private static final String KEY_SKIPPED = "skipped_tag";
+    /** 本次自动更新已触发过的 tag——避免每次启动都重复发起同一版本的下载。 */
+    private static final String KEY_AUTO_TAG = "auto_update_tag";
     /** 进行中的下载：进程若在下载期间被回收，onResume 靠这几个字段接续安装。 */
     private static final String KEY_PENDING_ID = "pending_download_id";
     private static final String KEY_PENDING_NAME = "pending_file_name";
@@ -157,7 +159,9 @@ public final class Updater {
                         if (manual) toast(app, "已是最新版本 " + currentName);
                         return;
                     }
+                    // 同一版本的自动更新已触发过，跳过；等更高版本 tag 出来才再下一次。
                     if (r.tag.equals(sp.getString(KEY_SKIPPED, ""))) return;
+                    if (r.tag.equals(sp.getString(KEY_AUTO_TAG, ""))) return;
                     if (!r.downloadable()) {
                         if (manual) toast(app, "发现新版本 " + r.version + "，但未找到可下载的安装包");
                         return;
@@ -165,8 +169,10 @@ public final class Updater {
                     activity.runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            if (activity.isFinishing() || sDialogShowing) return;
-                            showUpdateDialog(activity, r, currentName);
+                            if (activity.isFinishing()) return;
+                            startDownload(activity, r);
+                            sp.edit().putString(KEY_AUTO_TAG, r.tag).apply();
+                            toast(app, "发现新版本 " + r.version + "，后台下载中…");
                         }
                     });
                 } finally {
@@ -268,58 +274,15 @@ public final class Updater {
         }
     }
 
-    // ===== 提示 =====
-
-    private static void showUpdateDialog(final Activity activity, final Release r, String currentName) {
-        StringBuilder msg = new StringBuilder();
-        msg.append("当前版本 ").append(currentName)
-                .append("　→　最新版本 ").append(r.version);
-        String notes = cleanNotes(r.notes);
-        if (!notes.isEmpty()) msg.append("\n\n").append(notes);
-
-        sDialogShowing = true;
-        new AlertDialog.Builder(activity)
-                .setTitle("发现新版本 " + r.tag)
-                .setMessage(msg.toString())
-                .setPositiveButton("立即更新", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        startDownload(activity, r);
-                    }
-                })
-                .setNegativeButton("稍后", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                                .edit().putString(KEY_SKIPPED, r.tag).apply();
-                    }
-                })
-                .setOnDismissListener(new DialogInterface.OnDismissListener() {
-                    @Override
-                    public void onDismiss(DialogInterface dialog) {
-                        sDialogShowing = false;
-                    }
-                })
-                .show();
-    }
-
-    /** 说明文案过长时截断，避免弹窗被撑满屏。 */
-    private static String cleanNotes(String notes) {
-        if (notes == null) return "";
-        String s = notes.trim();
-        if (s.length() > 500) s = s.substring(0, 500) + "…";
-        return s;
-    }
-
     // ===== 下载与安装 =====
 
     private static void startDownload(final Activity activity, final Release r) {
-        // Android 8+ 从应用内安装必须获得「安装未知应用」授权
+        // Android 8+ 从应用内安装必须获得「安装未知应用」授权——未授权时调起设置页，
+        // 等用户授权后下次启动会自动完成下载+安装，不阻塞本次流程。
         if (!activity.getPackageManager().canRequestPackageInstalls()) {
-            Toast.makeText(activity, "请先允许本应用「安装未知应用」，返回后再点一次「立即更新」",
-                    Toast.LENGTH_LONG).show();
+            toast(activity, "请允许本应用「安装未知应用」以开启自动更新");
             openInstallPermissionSettings(activity);
-            return;
+            // 仍继续下载：下载完 handleIfFinished 里调起安装器时系统会自行再次检查权限。
         }
         Context app = activity.getApplicationContext();
         // 应用私有外部目录：全 API 无需存储权限，且与 ApkFileProvider 的共享目录一致
@@ -327,12 +290,12 @@ public final class Updater {
         try {
             DownloadManager dm = (DownloadManager) app.getSystemService(Context.DOWNLOAD_SERVICE);
             if (dm == null) {
-                Toast.makeText(activity, "无法启动下载", Toast.LENGTH_LONG).show();
+                toast(app, "无法启动下载服务");
                 return;
             }
             DownloadManager.Request req = new DownloadManager.Request(Uri.parse(r.apkUrl));
-            req.setTitle("正在下载新版本 " + r.tag);
-            req.setDescription("下载完成后将自动进入安装");
+            req.setTitle("dyindex 更新 " + r.tag);
+            req.setDescription("后台自动下载中…");
             req.setMimeType(ApkFileProvider.APK_MIME);
             req.setNotificationVisibility(
                     DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
@@ -347,9 +310,8 @@ public final class Updater {
                     .putString(KEY_PENDING_SHA_URL, r.shaUrl)
                     .apply();
             watchDownload(activity, id, fileName, r.shaUrl);
-            Toast.makeText(activity, "已开始后台下载，完成后会自动进入安装", Toast.LENGTH_LONG).show();
         } catch (Throwable t) {
-            Toast.makeText(activity, "下载启动失败：" + t.getMessage(), Toast.LENGTH_LONG).show();
+            toast(app, "下载启动失败：" + t.getMessage());
         }
     }
 
