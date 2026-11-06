@@ -151,7 +151,7 @@
 
 ## 七、PWA 网页版（iPhone Safari）
 
-**定位**：同一仓库派生的网页端，只负责「导入 CSV → 综合排名 → 导出 xlsx」，**页面本身不做抓取**。浏览器既不能向 `creator.douyin.com` 注入脚本，也无法读取跨域 DOM；网页端要用数据，靠同仓库派生的用户脚本在抖音页面内同源采集（见下「网页端抓取脚本」），或从 Android App 导出 CSV 导入。
+**定位**：同一仓库派生的网页端，只负责「导入 CSV → 综合排名 → 导出 xlsx」，**页面本身不做抓取**。浏览器既不能向 `creator.douyin.com` 注入脚本，也无法读取跨域 DOM；网页端要用数据，只能靠同仓库派生的用户脚本在抖音页面内同源采集（见下「网页端抓取脚本」）。
 
 | 组件 | 位置 | 职责 |
 | --- | --- | --- |
@@ -165,7 +165,7 @@
 | 用户脚本（网页端抓取） | `pwa-src/userscript-controller.js` → 构建产物 `pwa-dist/douyin-index-extract.user.js` | 网页端唯一的抓取形态：脚本注入 `creator.douyin.com` 页面内（同源），直接复用 `assets/extract.js` 的采集实现（由构建脚本原样拼接，不复制逻辑）；控制器提供 `window.DyBridge` 的网页版实现（`onLog` / `onResult` / `onError`）、右下角「抓取数据」悬浮按钮（Shadow DOM 隔离样式）、抓完后的「复制 CSV / 下载 CSV / 打开排名页」；`@match` 限定 creator 域、`@grant none` |
 | 部署 | `.github/workflows/pages.yml` | 推送 `main` 自动转换并发布到 GitHub Pages，产物自检（关键文件 + 注入标记）不通过即失败；见「六、构建与交付链」 |
 | 使用方式（iPhone） | Safari 打开线上地址 → 分享 → 添加到主屏幕 | 全屏无地址栏运行；首次联网后资源进缓存，断网仍可导入分析；数据只在本机处理 |
-| 与 App 的边界 | — | 数据来源：用「网页端抓取脚本」（推荐）复制/下载 CSV 后导入；也可导入 Android 端导出的 CSV；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录） |
+| 与 App 的边界 | — | 数据来源：只用「网页端抓取脚本」复制/下载 CSV 后导入；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录） |
 
 **本地自测**：`node tools/build-pwa.js` 后用任意静态服务器指向 `pwa-dist/`，浏览器打开即可验证导入、排名、导出；Service Worker 需要 `http://localhost` 或 https 环境才会注册。
 
