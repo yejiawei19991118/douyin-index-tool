@@ -7,7 +7,8 @@
  * 职责：
  *   1. 提供 window.DyBridge 的网页版实现（extract.js 通过它回传日志/结果/错误）；
  *   2. 右下角浮动按钮「抓取数据」→ 调 window.__dyRun()（extract.js 导出）；
- *   3. 抓取完成后给出「复制 CSV / 下载 CSV / 打开排名页」，把 CSV 交给 PWA 导入。
+ *   3. 抓取完成后给出「复制 CSV / 下载 CSV / 打开排名页」，把 CSV 交给 PWA 导入；
+ *   4. 「打开页面」入口：输入关键词后一键打开抖音指数的四类页面（与 Android 端 AppUrls 一致）。
  *
  * 注意：本文件由 tools/build-pwa.js 注入 extract.js 后生成 .user.js，
  * 不要在页面里单独引用它（它依赖 extract.js 定义的 window.__dyRun）。
@@ -26,6 +27,9 @@
   var lastName = '抖音指数_人群分析.csv';
 
   var PAGE_TYPE_LABEL = { keyword: '关键词', topic: '话题', daren: '达人', video: '视频' };
+
+  /* 与 Android 端 AppUrls 完全一致：指数页根地址 + 四类入口 */
+  var INDEX_BASE = 'https://creator.douyin.com/creator-micro/creator-count/arithmetic-index';
 
   var TEMPLATE =
     '<style>' +
@@ -71,9 +75,35 @@
         'padding:6px 12px;font-size:12px;min-height:32px;cursor:pointer;' +
         'box-shadow:0 2px 8px rgba(17,24,39,.12);-webkit-tap-highlight-color:transparent}' +
       '.link:active{transform:scale(.97)}' +
+      '.pills{display:flex;align-items:center;gap:8px}' +
+      '.launcher{width:min(320px,calc(100vw - 24px));background:#fff;border:1px solid #e5e7eb;border-radius:14px;' +
+        'box-shadow:0 10px 30px rgba(17,24,39,.18);padding:12px 14px}' +
+      '.launcher[hidden]{display:none}' +
+      '.kw{width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;' +
+        'font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;' +
+        'font-size:16px;min-height:38px;color:#111827;background:#fff;outline:none;-webkit-appearance:none}' +
+      '.kw:focus{border-color:#2563eb}' +
+      '.launch-tip{font-size:12px;color:#6b7280;margin-top:6px;word-break:break-word}' +
+      '.launch-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}' +
     '</style>' +
     '<div class="wrap">' +
-      '<button type="button" class="link" data-act="help">iPhone 用法</button>' +
+      '<div class="pills">' +
+        '<button type="button" class="link" data-act="launch">打开页面</button>' +
+        '<button type="button" class="link" data-act="help">iPhone 用法</button>' +
+      '</div>' +
+      '<div class="launcher" hidden>' +
+        '<div class="head"><span class="title">打开指数页面</span>' +
+          '<button type="button" class="close" data-act="launch-close" aria-label="收起">×</button></div>' +
+        '<input class="kw" type="search" placeholder="关键词 / 抖音号 / 话题" ' +
+          'autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">' +
+        '<div class="launch-grid">' +
+          '<button type="button" class="btn primary" data-page="keyword">关键词分析</button>' +
+          '<button type="button" class="btn" data-page="daren">达人搜索</button>' +
+          '<button type="button" class="btn" data-page="video">视频搜索</button>' +
+          '<button type="button" class="btn" data-page="topic">话题搜索</button>' +
+        '</div>' +
+        '<div class="launch-tip">输入后点对应按钮直达该页面；达人/视频/话题页进去后还需手动进入详情。</div>' +
+      '</div>' +
       '<div class="card" hidden>' +
         '<div class="head"><span class="title">抖音指数抓取</span>' +
           '<button type="button" class="close" aria-label="收起">×</button></div>' +
@@ -93,6 +123,7 @@
           '<div class="help-head"><span class="help-title">iPhone 用法</span>' +
             '<button type="button" class="close" data-act="help-close" aria-label="关闭">×</button></div>' +
           '<ol>' +
+            '<li>选页：点「打开页面」输入关键词，再点「关键词分析 / 达人搜索 / 视频搜索 / 话题搜索」直达该页</li>' +
             '<li>抓取前：登录创作者中心并打开人群分析页，等图表全部渲染完成</li>' +
             '<li>点右下角「抓取数据」，期间保持在当前页面（脚本会自动滚动与下钻）</li>' +
             '<li>抓完点「复制 CSV」；被系统拒绝时改用「下载 CSV」</li>' +
@@ -122,11 +153,31 @@
     els.status = root.querySelector('.status');
     els.result = root.querySelector('.result');
     els.summary = root.querySelector('.summary');
-    els.close = root.querySelector('.close');
+    els.close = root.querySelector('.card .close');  // 注意：launcher 里也有 .close，必须限定
     els.help = root.querySelector('.help');
+    els.launcher = root.querySelector('.launcher');
+    els.kw = root.querySelector('.kw');
+    els.launchTip = root.querySelector('.launch-tip');
+    els.launchTipDef = els.launchTip ? els.launchTip.textContent : '';
 
     els.fab.addEventListener('click', run);
     els.close.addEventListener('click', function () { els.card.hidden = true; });
+
+    // 「打开页面」：与 Android APK 的四种模式一致，输入关键词后一键直达
+    root.querySelectorAll('[data-act="launch"]').forEach(function (btn) {
+      btn.addEventListener('click', toggleLauncher);
+    });
+    var launchClose = root.querySelector('[data-act="launch-close"]');
+    if (launchClose) launchClose.addEventListener('click', function () { els.launcher.hidden = true; });
+    root.querySelectorAll('[data-page]').forEach(function (btn) {
+      btn.addEventListener('click', function () { openPage(btn.getAttribute('data-page')); });
+    });
+    if (els.kw) {
+      els.kw.addEventListener('input', function () { setLaunchTip(''); });
+      els.kw.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); openPage('keyword'); }
+      });
+    }
 
     root.querySelectorAll('.actions .btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -150,6 +201,50 @@
     });
   }
 
+  /* ============================ 打开指数页面 ============================ */
+
+  var KW_KEY = 'dywx.launchKw';
+
+  function pageUrl(type, kw) {
+    var k = encodeURIComponent(kw);
+    if (type === 'daren') return INDEX_BASE + '/daren/search?keyword=' + k;
+    if (type === 'video') return INDEX_BASE + '/videosearch?query=' + k;
+    if (type === 'topic') return INDEX_BASE + '/topicsearch?topic=' + k;
+    return INDEX_BASE + '/analysis?keyword=' + k + '&tab=crowd&appName=aweme&source=creator';
+  }
+
+  function toggleLauncher() {
+    var open = els.launcher.hidden;
+    els.launcher.hidden = !open;
+    if (!open) return;
+    // 两个面板互斥展开，避免小屏下叠加超出视口
+    els.card.hidden = true;
+    if (!els.kw) return;
+    if (!els.kw.value) {
+      try { els.kw.value = localStorage.getItem(KW_KEY) || ''; } catch (e) { /* 隐私模式忽略 */ }
+    }
+    setLaunchTip('');
+    els.kw.focus();
+  }
+
+  function setLaunchTip(text, isError) {
+    if (!els.launchTip) return;
+    els.launchTip.textContent = text || els.launchTipDef;
+    els.launchTip.style.color = isError ? '#b91c1c' : '';
+  }
+
+  function openPage(type) {
+    var kw = String((els.kw && els.kw.value) || '').trim();
+    if (!kw) {
+      setLaunchTip('请先输入关键词（达人页可填抖音号）', true);
+      if (els.kw) els.kw.focus();
+      return;
+    }
+    try { localStorage.setItem(KW_KEY, kw); } catch (e) { /* 忽略 */ }
+    // 同标签跳转：目标页同属 creator 域，脚本会在新页面重新注入
+    location.href = pageUrl(type, kw);
+  }
+
   function setStatus(text, isError) {
     if (els.status) {
       els.status.textContent = text;
@@ -160,6 +255,7 @@
   function start() {
     ensureUI();
     els.card.hidden = false;
+    els.launcher.hidden = true;
     els.result.hidden = true;
     els.fab.disabled = true;
     els.fab.textContent = '抓取中…';

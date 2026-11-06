@@ -162,7 +162,7 @@
 | 启动脚本 | `pwa-src/web-boot.js` | ①隐藏原生专属入口：「返回抓取」（依赖原生桥关闭 Activity）、「重新分析」（导入后无意义）；放出「加载示例数据」；②在控制区注入「选择 CSV 文件 / 粘贴 CSV」导入卡片，文件交给页面内置 `handleFile()`，复用同一条「编码校验 → 解析 → 清洗 → 评分 → 渲染」链路；③首次访问显示「添加到主屏幕」提示，关闭后写入 localStorage；④注册 Service Worker；⑤改写首页空状态文案为导入引导；⑥顶栏「iPhone 用法」按钮 → 底部弹层教程（添加主屏 / 安装抓取脚本 / 抓取并导入 / 离线 / 常见问题） |
 | 补充样式 | `pwa-src/web.css` | 导入卡片、提示条；并为 `#backBtn[hidden]` / `#reanalyzeBtn[hidden]` / `#sampleBtn[hidden]` 补显式 `display:none`——`.btn` 的 `inline-flex` 会盖掉浏览器对 `[hidden]` 的默认样式 |
 | 图标 | 构建期生成 `icons/icon-192.png`、`icon-512.png`、`icon-180.png` | PNG 编码手写（IHDR/IDAT/IEND + CRC32），无需 canvas 或三方库；manifest 用透明圆角版，apple-touch-icon 用满幅方形交由 iOS 自行切圆角 |
-| 用户脚本（网页端抓取） | `pwa-src/userscript-controller.js` → 构建产物 `pwa-dist/douyin-index-extract.user.js` | 网页端唯一的抓取形态：脚本注入 `creator.douyin.com` 页面内（同源），直接复用 `assets/extract.js` 的采集实现（由构建脚本原样拼接，不复制逻辑）；控制器提供 `window.DyBridge` 的网页版实现（`onLog` / `onResult` / `onError`）、右下角「抓取数据」悬浮按钮（Shadow DOM 隔离样式）、抓完后的「复制 CSV / 下载 CSV / 打开排名页」；`@match` 限定 creator 域、`@grant none` |
+| 用户脚本（网页端抓取） | `pwa-src/userscript-controller.js` → 构建产物 `pwa-dist/douyin-index-extract.user.js` | 网页端唯一的抓取形态：脚本注入 `creator.douyin.com` 页面内（同源），直接复用 `assets/extract.js` 的采集实现（由构建脚本原样拼接，不复制逻辑）；控制器提供 `window.DyBridge` 的网页版实现（`onLog` / `onResult` / `onError`）、右下角「抓取数据」悬浮按钮（Shadow DOM 隔离样式）、抓完后的「复制 CSV / 下载 CSV / 打开排名页」、以及「打开页面」四入口——输入关键词后一键直达关键词分析 / 达人搜索 / 视频搜索 / 话题搜索（URL 构造与 Android 端 `AppUrls` 一致）；`@match` 限定 creator 域、`@grant none` |
 | 部署 | `.github/workflows/pages.yml` | 推送 `main` 自动转换并发布到 GitHub Pages，产物自检（关键文件 + 注入标记）不通过即失败；见「六、构建与交付链」 |
 | 使用方式（iPhone） | Safari 打开线上地址 → 分享 → 添加到主屏幕 | 全屏无地址栏运行；首次联网后资源进缓存，断网仍可导入分析；数据只在本机处理 |
 | 与 App 的边界 | — | 数据来源：只用「网页端抓取脚本」复制/下载 CSV 后导入；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录） |
