@@ -636,11 +636,11 @@
       var back = backButton(drillHost(chart.root));
       if (!back) {
         // 没钻进去（点到空白 / 该标签无子层）：仅记录主标签本身，不丢数据。
-        if (!seen[main.name]) { seen[main.name] = 1; out.push({ name: main.name, ratio: main.ratio, tgi: main.tgi }); }
+        if (!seen[main.name]) { seen[main.name] = 1; out.push({ name: main.name, ratio: main.ratio, tgi: main.tgi, parent: '' }); }
         continue;
       }
       drilled++;
-      if (!seen[main.name]) { seen[main.name] = 1; out.push({ name: main.name, ratio: main.ratio, tgi: main.tgi }); }
+      if (!seen[main.name]) { seen[main.name] = 1; out.push({ name: main.name, ratio: main.ratio, tgi: main.tgi, parent: '' }); }
 
       // 子层：再扫一行；子标签名为「主标签_子标签」，用前缀过滤掉起始处的残留值。
       if (chartStale(chart)) chart = browsingChart(title);
@@ -654,7 +654,7 @@
         var it = kept[t];
         if (!it.name || it.name === main.name || seen[it.name]) continue;
         seen[it.name] = 1;
-        out.push({ name: it.name, ratio: it.ratio, tgi: it.tgi });
+        out.push({ name: it.name, ratio: it.ratio, tgi: it.tgi, parent: main.name });
       }
 
       try { back.click(); } catch (e) { /* 点不动也继续下一个 */ }
@@ -745,7 +745,9 @@
   }
 
   function buildCsv(sections) {
-    var lines = ['区块,分类,占比,TGI'];
+    // 父类列：二级类目的显式父标签（用户内容浏览分布下钻时已知），
+    // 供排名页直接判定父子关系，不再靠「分类名里是否带下划线」反推。
+    var lines = ['区块,分类,占比,TGI,父类'];
     var order = ['地域分布', '年龄分布', '性别分布', '用户内容浏览分布', '手机品牌分布', '手机价格分布'];
     // 固定顺序之外若还有区块（未来新增），追加在最后，避免静默丢数据。
     var keys = Object.keys(sections);
@@ -757,7 +759,7 @@
       if (Array.isArray(data)) {
         for (var j = 0; j < data.length; j++) {
           var it = data[j];
-          lines.push([csvEscape(name), csvEscape(it.name), csvEscape(it.ratio), csvEscape(it.tgi)].join(','));
+          lines.push([csvEscape(name), csvEscape(it.name), csvEscape(it.ratio), csvEscape(it.tgi), csvEscape(it.parent || '')].join(','));
         }
       } else {
         var tabs = Object.keys(data);
@@ -765,7 +767,8 @@
           var tab = tabs[t];
           for (var m = 0; m < data[tab].length; m++) {
             var r = data[tab][m];
-            lines.push([csvEscape(name + '-' + tab), csvEscape(r.name), csvEscape(r.ratio), csvEscape(r.tgi)].join(','));
+            // 地域/手机等按页签拆分的区块，页签是维度而非父类，父类列留空。
+            lines.push([csvEscape(name + '-' + tab), csvEscape(r.name), csvEscape(r.ratio), csvEscape(r.tgi), csvEscape(r.parent || '')].join(','));
           }
         }
       }

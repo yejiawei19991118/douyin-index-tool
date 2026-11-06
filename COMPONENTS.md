@@ -83,14 +83,14 @@
 | 通用区块采集 | `hasTitle()`、`parseTableNear()`、`extractGeneric()` | 手机品牌/价格分布：优先 canvas 扫描，空则退「标题附近含 排名+TGI 表头容器」的 DOM 表格解析；标题不在场直接跳过 |
 | 性别采集 | `nearestCommon()`、`extractGender()` | 取「男性 / 女性」标签的最小公共祖先容器隔离解析；紧邻正则避免命中介绍文案 |
 | 兴趣下钻采集 | `browsingChart()`、`chartStale()`、`drillHost()`、`backButton()`、`clickChart()`、`sweepBars()`、`extractBrowsing()` | 「用户内容浏览分布」实为**柱状图**：单行扫 x 读出全部主标签 → 逐个点击柱体下钻（点击 y 取 0.80，落在柱体上）→ 扫子层 → 点「返回上一级」回主层；子标签名为「主标签_子标签」，输出 `时尚` / `时尚_穿搭` 平铺行 |
-| 输出 | `pageName()`、`csvEscape()`、`buildCsv()` | 按页型取页名；CSV 转义；按区块 + 维度组装 CSV（固定六区块顺序，额外区块追加在后） |
+| 输出 | `pageName()`、`csvEscape()`、`buildCsv()` | 按页型取页名；CSV 转义；按区块 + 维度组装 CSV（表头 `区块,分类,占比,TGI,父类`，`父类` 由下钻时的主标签显式写入，供排名侧判定二级类目，不再依赖 `_` 命名约定） |
 | 流程编排 | `scrollThrough()`、`countRows()`、`extractAll()` | 整页滚动逼出懒加载图表；统计行数；按「年龄 → 兴趣 → 性别 → 地域」顺序采集（地域放最后，避免切页签重渲染影响其它图表） |
 | 诊断快照 | `debug`（随结果回传） | 标题命中位置、图表归属、性别容器原文、兴趣下钻概况（主标签数 / 成功下钻数 / 行数），供「诊断」按钮排查 |
 | 触发组件 | `window.__dyRun()`、`watch()` | 手动触发；关键词/话题页就绪后 1.5s 自动触发一次，达人/视频页只提示就绪（避免用户还在浏览时自动抓完跳走） |
 
 ---
 
-## 五、综合排名分析页 `RankingActivity.java` + `assets/ranking.html`
+## 五、综合排名分析页 `RankingActivity.java` + `assets/ranking.html` + `assets/scoring.js`
 
 抓取完成后自动跳入本页，把人群分析 CSV 直接灌入内置排名工具，**无需手动导出/上传**。
 
@@ -99,9 +99,9 @@
 | 页面承载 | `RankingActivity.onCreate` | 全屏 WebView 加载 `file:///android_asset/ranking.html`；页面就绪后 `evaluateJavascript` 调 `window.loadFromCsv(csv, keyword)` 自动分析 |
 | 数据入口 | `window.loadFromCsv()` / `parseCsvText()` | 原生传入 CSV 文本 → 内置 RFC4180 解析器（无第三方依赖）→ `buildTable` → `processTable`；自动完成清洗、打分、四象限、二级混合榜 |
 | 原生回传桥 | `DyRankingBridge`（`window.DyRankingBridge`） | `exportCsv(text, name)`：页面「导出结果」交由原生写入系统下载目录；`.xlsx` 走 base64 解码后二进制写入，`.csv` 走 UTF-8 字节写入；成功/失败由原生 Toast 单条提示（WebView 内 `<a download>` 不落盘）；`close()`：「返回抓取」关闭本 Activity |
-| 多 Sheet 导出 | `buildMultiSheetXlsx()`、`xlsxSheetXml()` | 纯 JS OOXML 生成器（crc32 + zip STORED + inline strings），一个区块一个 sheet；区块 sheet 隐藏 R/R状态 两列，**二级混合总榜** sheet 保留全部列；仅对有数据的区块生成 sheet |
+| 多 Sheet 导出 | `buildMultiSheetXlsx()`、`xlsxSheetXml()` | 纯 JS OOXML 生成器（crc32 + zip STORED + inline strings），一个区块一个 sheet；区块 sheet 隐藏 R/R状态 两列，**二级混合总榜** sheet 保留全部列；仅对有数据的区块生成 sheet。混合榜 12 列、区块 sheet 10 列（均含「名次区间（权重0.3–0.7）」） |
 | 导出命名 | `state.currentKeyword` | 文件名 `抖音指数_<页名>_综合排名.xlsx` 与页面标题都取自抓取侧的页名（`pageName`）；关键词/话题页=页头主题 chip、达人页=昵称、视频页=视频标题（不使用达人抖音号）。表内不再重复写 `关键词 / 榜单名称 / 分组名` 三列（文件名与 sheet 名已表达）。原生注入时 `loadFromCsv` 标记 `meta.nativeName`，`cleanData` 直接沿用该页名、不再按文件名规则二次截断，保证一致 |
-| 排名算法 | `cleanData` / `robustScores` / `buildList` / `buildKeywordResult` / `computeR` | 9 步数据清洗；占比→规模分 S、TGI→偏好分 P（稳健标准化：中位数 50、每 IQR=25 分）；composite = 0.5S + 0.5P 等权合成；四象限（HH 重点机会 / HL / LH / LL）；兴趣子类 R = 子类占比/父类占比×100，>100 标「超常发挥」 |
+| 排名算法 | `assets/scoring.js`（`DyScoring`）/ `buildList` / `buildKeywordResult` / `computeR` / `isSecondaryRow` | 9 步数据清洗；占比→规模分 S、TGI→偏好分 P：两维先在 log 空间做稳健标准化（中位数 0、1 IQR=1），再用有界单调映射 `100/(1+3^-z)` 转为分数（中位数 50、中间区段 1 IQR≈±25 分、值域 (0,100) 且不做硬截断）；composite = `S^wS · P^(1-wS)` 几何合成（wS=0.5）；名次区间 = wS∈{0.3,0.5,0.7} 三种权重下的最好/最差名次；四象限（HH 重点机会 / HL / LH / LL）；兴趣子类 R = 子类占比/父类占比×100（父类取抓取侧显式 `父类` 字段，回退 `_` 拆分），>100 标「超常发挥」。注意 `scoring.js` 的 `share` 入参是小数（0.09=9%），与展示口径一致 |
 | 标准区块 | `STANDARD_BLOCKS` | 地域分布-城市/城市级别/省份、年龄分布、性别分布、用户内容浏览分布、手机价格分布、手机品牌分布；缺失区块在覆盖率中如实标注 |
 | 资产独立性 | `ranking.html` | 已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行；CSV 解析统一走内联 `parseCsvText`（不依赖 PapaParse），Excel 解析在 XLSX 未加载时给出明确提示而非崩溃 |
 
@@ -130,9 +130,9 @@
 1. 校验签名 Secrets 是否齐全（缺失即失败，不白跑构建）
 2. 由 Secrets 还原 `release.jks` 与 `keystore.properties`（仅存在于本次 runner，用完销毁）
 3. 将 Gradle 分发包从国内镜像切到官方源（境外 runner 拉取更稳）
-4. **`./gradlew test`**：单元测试不全绿即中止，绝不产出/发布半成品
+4. **`./gradlew test`**（另需 `node --test tools/scoring.test.js` 校验评分模块）：单元测试不全绿即中止，绝不产出/发布半成品
 5. `./gradlew assembleRelease`
-6. **产物校验**：文件存在 → `apksigner verify` 签名校验（未签名直接中止发布）→ 确认包内含 `assets/extract.js`
+6. **产物校验**：文件存在 → `apksigner verify` 签名校验（未签名直接中止发布）→ 确认包内含 `assets/extract.js`、`assets/ranking.html`、`assets/scoring.js`
 7. 生成 `douyin-index-tool-<tag>-release.apk` 与同名 `.sha256`
 8. 发布 Release 并附带两个资产
 

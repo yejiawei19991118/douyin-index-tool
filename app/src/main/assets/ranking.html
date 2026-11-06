@@ -251,6 +251,7 @@ table.data-table td.name{font-weight:500}
 
 <div class="toast" id="toast" hidden=""></div>
 
+<script src="scoring.js"></script>
 <script>
 'use strict';
 
@@ -262,7 +263,6 @@ const RANK_DISPLAY_LIMIT = 100;
 const LIST_TRUNCATE = 20;
 const ANOMALY_SAMPLE_MAX = 20;
 const EXPORT_PROGRESS_ROWS = 5000;
-const EQUAL_WEIGHT = 0.5;
 const KEYWORD_NULL_RATIO_ALERT = 0.3;
 const SEP = '\u0001';
 const CONTENT_BLOCK = '用户内容浏览分布';
@@ -449,54 +449,6 @@ function parseNumericString(v) {
 
 function ascending(a, b) { return a - b; }
 
-/* 已排序数组的中位数；median 与 robustScores 共用，避免重复排序 */
-function medianOfSorted(arr) {
-  const n = arr.length;
-  if (n === 0) return NaN;
-  if (n % 2 === 1) return arr[(n - 1) / 2];
-  return (arr[n / 2 - 1] + arr[n / 2]) / 2;
-}
-
-/* 已排序数组的分位数（线性插值，type 7） */
-function quantileOfSorted(arr, p) {
-  const n = arr.length;
-  if (!n) return NaN;
-  const pos = (n - 1) * p;
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  if (hi >= n) return arr[n - 1];
-  return arr[lo] + (arr[hi] - arr[lo]) * (pos - lo);
-}
-
-function median(values) {
-  return medianOfSorted(values.slice().sort(ascending));
-}
-
-/* 分位数（线性插值）：用于稳健标准化的 Q1 / Q3 */
-function quantile(values, p) {
-  return quantileOfSorted(values.slice().sort(ascending), p);
-}
-
-/* 稳健标准化：中位数为 50 分，每 1 个 IQR 记 25 分（Q1→37.5、Q3→62.5）
-   ±2 个 IQR（Tukey 栅栏外侧）截断为 0 / 100，保留中段与近尾部的领先幅度。
-   实现只排序一次（中位数 + Q1 + Q3 复用同一有序数组）。 */
-function robustScores(values) {
-  const n = values.length;
-  if (n < 2) return new Array(n).fill(NaN);
-  const sorted = values.slice().sort(ascending);
-  const med = medianOfSorted(sorted);
-  const iqr = quantileOfSorted(sorted, 0.75) - quantileOfSorted(sorted, 0.25);
-  if (!(iqr > 0)) return new Array(n).fill(50);
-  return values.map(function (v) {
-    return Math.max(0, Math.min(100, 50 + 25 * (v - med) / iqr));
-  });
-}
-
-/* 两维等权合成：S、P 各占 50%（等权系数固定，不随数据调整） */
-function weightedComposite(S, P) {
-  return EQUAL_WEIGHT * S + EQUAL_WEIGHT * P;
-}
-
 function err(code, message, detail) {
   return { code: code, message: message, detail: detail || '' };
 }
@@ -663,6 +615,7 @@ const FIELD_SPEC = [
   { key: 'category', label: '分类', required: true },
   { key: 'share', label: '占比', required: true },
   { key: 'tgi', label: 'TGI', required: true },
+  { key: 'parent', label: '父类', required: false },
   { key: 'keyword', label: '关键词', required: false }
 ];
 
@@ -757,11 +710,17 @@ function cleanData(table, fieldMatch) {
   const records = table.dataRows.map(function (cells, idx) {
     const block = normCell(cellToText(cells[mapping.block], ctx));
     const category = normCell(cellToText(cells[mapping.category], ctx));
+    /* 父类列（可选）：抓取端已知下钻时的父标签，用它替代「分类名里是否带下划线」的判断。
+       旧文件没有该列时留空，后续统一走下划线兜底。 */
+    const parent = (mapping.parent !== undefined)
+      ? normCell(cellToText(cells[mapping.parent], ctx))
+      : '';
     let keyword = hasKeywordField ? normCell(cellToText(cells[mapping.keyword], ctx)) : (derivedKeyword || SINGLE_KW);
     return {
       _rowIndex: idx + 1,
       block: block,
       category: category,
+      parent: parent,
       keyword: keyword,
       shareRaw: cells[mapping.share],
       tgiRaw: cells[mapping.tgi],
@@ -900,7 +859,7 @@ function cleanData(table, fieldMatch) {
   const dropped = new Set();
   const generalFirst = new Map();
   afterZero.forEach(function (r) {
-    const isParent = r.block === CONTENT_BLOCK && r.category.indexOf('_') === -1;
+    const isParent = r.block === CONTENT_BLOCK && !isSecondaryRow(r);
     if (isParent) return;
     const key = r.keyword + SEP + r.block + SEP + r.category;
     if (generalFirst.has(key)) {
@@ -914,7 +873,7 @@ function cleanData(table, fieldMatch) {
 
   const parentGroups = new Map();
   afterZero.forEach(function (r) {
-    if (!(r.block === CONTENT_BLOCK && r.category.indexOf('_') === -1)) return;
+    if (!(r.block === CONTENT_BLOCK && !isSecondaryRow(r))) return;
     const key = r.keyword + SEP + r.block + SEP + r.category;
     if (!parentGroups.has(key)) parentGroups.set(key, []);
     parentGroups.get(key).push(r);
@@ -1001,18 +960,25 @@ function buildParentIndex(kept) {
       dupSet.add(key);
       return;
     }
-    if (r.category.indexOf('_') === -1 && r.category !== '') {
+    if (!isSecondaryRow(r) && r.category !== '') {
       index.set(key, r.share);
     }
   });
   return { index: index, dupSet: dupSet };
 }
 
+/* 是否为二级类目：优先用抓取端给的「父类」列；旧文件没有该列时，
+   退回「分类名里带下划线」的老判定。 */
+function isSecondaryRow(r) {
+  if (r.parent) return true;
+  return r.category.indexOf('_') !== -1;
+}
+
 /* R = 二级占比 ÷ 父类占比 × 100，仅表示「相对父类的大小」，不参与综合分与排名。
    实测存在 R>100（子类占比高于父类总量），说明一级/二级不是严格的加和拆分关系，
    因此这里只做中性判定，不用「超常发挥」这类带褒贬的说法。 */
 function computeR(record, parentInfo) {
-  const parentName = record.category.split('_')[0];
+  const parentName = record.parent || record.category.split('_')[0];
   const key = record.keyword + SEP + parentName;
   if (parentInfo.dupSet.has(key)) return { status: '父类重复', value: null };
   if (!parentInfo.index.has(key)) return { status: '父类缺失', value: null };
@@ -1080,22 +1046,23 @@ function buildList(records, opts) {
   let medS = NaN;
   let medP = NaN;
   if (n >= 2) {
-    const sPct = robustScores(rows.map(function (r) { return r.share; }));
-    const pPct = robustScores(rows.map(function (r) { return r.tgi; }));
+    /* 口径 v2 见 assets/scoring.js：对数域稳健标准化 + 几何合成 + 权重敏感性名次区间 */
+    const scored = DyScoring.scoreRows(rows);
     rows.forEach(function (r, i) {
-      r.S = sPct[i];
-      r.P = pPct[i];
-      r.composite = weightedComposite(r.S, r.P);
+      r.S = scored.S[i];
+      r.P = scored.P[i];
+      r.composite = scored.composite[i];
+      r.rank = scored.rank[i];
+      r.rankLo = scored.rankLo[i];
+      r.rankHi = scored.rankHi[i];
     });
-    const sorted = rows.slice().sort(rankingComparator);
-    sorted.forEach(function (r, i) { r.rank = i + 1; });
-    /* 稳健分是原值的单调线性映射，中位数恒映射为 50；IQR=0 时该维全为 50。
-       因此榜内中位数恒为 50，无需再对 S/P 排序求中位数。 */
+    const sorted = rows.slice().sort(function (a, b) { return a.rank - b.rank; });
+    /* 稳健分是原值的单调映射，中位数恒映射为 50，故象限阈值仍是 50。 */
     medS = 50;
     medP = 50;
     /* 某维无差异（IQR=0，全为 50）时无法区分高低，不应把全榜判成“高”象限 */
-    const sFlat = rows.every(function (r) { return r.S === 50; });
-    const pFlat = rows.every(function (r) { return r.P === 50; });
+    const sFlat = scored.flatS;
+    const pFlat = scored.flatP;
     rows.forEach(function (r) {
       if (sFlat || pFlat) {
         r.qCode = '';
@@ -1155,7 +1122,7 @@ function buildKeywordResult(keyword) {
     const rows = rowsOf(block);
     if (block === CONTENT_BLOCK) {
       blockLists.push(buildList(rows.filter(function (r) {
-        return r.category.indexOf('_') === -1 && !r._parentDup && !r._tgiAbnormal;
+        return !isSecondaryRow(r) && !r._parentDup && !r._tgiAbnormal;
       }), { id: 'block:' + block, name: block }));
       return;
     }
@@ -1179,13 +1146,13 @@ function buildKeywordResult(keyword) {
 
   const secondaryRows = [];
   rowsOf(CONTENT_BLOCK).forEach(function (r) {
-    if (r.category.indexOf('_') === -1) return;
+    if (!isSecondaryRow(r)) return;
     if (r._tgiAbnormal) return;
     const rInfo = computeR(r, parentInfo);
     if (rInfo.value === null) {
       /* R 只是说明列，不参与综合分与排名：这类行同样要进混合榜，
          否则榜单样本量会随「页面是否展示父类行」而缩水。异常明细照旧记录，供诊断参考。 */
-      const item = '第 ' + r._rowIndex + ' 行：' + r.category + '（父类 ' + (rInfo.parentName || r.category.split('_')[0] || '(空)') + '）';
+      const item = '第 ' + r._rowIndex + ' 行：' + r.category + '（父类 ' + (rInfo.parentName || r.parent || '(空)') + '）';
       const kind = rInfo.status === '父类重复' ? 'dup' : (rInfo.status === '父类缺失' ? 'missing' : 'zero');
       unavailable[kind + 'Total'] += 1;
       /* 明细只保留前 LIST_TRUNCATE 条，计数单独累加，避免大文件下内存膨胀 */
@@ -1200,7 +1167,7 @@ function buildKeywordResult(keyword) {
       _rowIndex: r._rowIndex,
       R: rInfo.value,
       Rstatus: rInfo.status,
-      parentName: rInfo.parentName || r.category.split('_')[0],
+      parentName: rInfo.parentName || r.parent || r.category.split('_')[0],
       parentShare: rInfo.parentShare
     });
   });
@@ -1684,8 +1651,9 @@ function buildBlockTableHTML(list) {
     thSort('原始 TGI', 'tgi', list, 80, true, true) +
     thSort('规模分 S（稳健）', 'S', list, 100, true, true) +
     thSort('偏好分 P（稳健）', 'P', list, 100, true, true) +
-    thSort('综合得分（稳健等权）', 'composite', list, 130, true, true) +
+    thSort('综合得分（几何合成）', 'composite', list, 130, true, true) +
     thSort('区块内排名', 'rank', list, 70, true, true) +
+    thSort('名次区间（权重0.3–0.7）', 'rankLo', list, 150, true, true) +
     thSort('四象限', 'quad', list, 140, false, false) +
     thSort('一句解读', 'interp', list, 240, false, false) +
     '</tr>';
@@ -1699,6 +1667,7 @@ function buildBlockTableHTML(list) {
       '<td class="num">' + fmt(r.P, 1) + '</td>' +
       '<td class="num">' + fmt(r.composite, 2) + '</td>' +
       '<td class="num">' + (r.rank === null ? '—' : r.rank) + '</td>' +
+      '<td class="num">' + rankRangeText(r) + '</td>' +
       '<td>' + quadrantCell(r, list) + '</td>' +
       '<td>' + esc(r.interp) + '</td></tr>';
   }).join('');
@@ -1716,8 +1685,9 @@ function buildMixedTableHTML(list) {
     thSort('原始 TGI', 'tgi', list, 80, true, true) +
     thSort('规模分 S（稳健）', 'S', list, 100, true, true) +
     thSort('偏好分 P（稳健）', 'P', list, 100, true, true) +
-    thSort('综合得分（稳健等权）', 'composite', list, 130, true, true) +
+    thSort('综合得分（几何合成）', 'composite', list, 130, true, true) +
     thSort('混排排名', 'rank', list, 80, true, true) +
+    thSort('名次区间（权重0.3–0.7）', 'rankLo', list, 150, true, true) +
     thSort('四象限', 'quad', list, 140, false, false) +
     thSort('一句解读', 'interp', list, 240, false, false) +
     '</tr>';
@@ -1734,6 +1704,7 @@ function buildMixedTableHTML(list) {
       '<td class="num">' + fmt(r.P, 1) + '</td>' +
       '<td class="num">' + fmt(r.composite, 2) + '</td>' +
       '<td class="num">' + (r.rank === null ? '—' : r.rank) + '</td>' +
+      '<td class="num">' + rankRangeText(r) + '</td>' +
       '<td>' + quadrantCell(r, list) + '</td>' +
       '<td>' + esc(r.interp) + '</td></tr>';
   }).join('');
@@ -1859,7 +1830,7 @@ function mixedHTML(result) {
   return '<section class="card" id="card-mixed">' +
     '<div class="card-head"><h2>二级混合总榜</h2><span class="meta">榜单有效记录 ' + list.n + ' 条' +
     (list.n > RANK_DISPLAY_LIMIT ? '，展示 Top' + RANK_DISPLAY_LIMIT : '，展示全部 ' + list.n + ' 条') + '</span></div>' +
-    '<div class="hint-bar">本榜按「原始占比（规模）+ 原始 TGI（偏好）」等权综合排名；R（相对父类占比）与 R 判定仅作参考，不参与打分。</div>' +
+    '<div class="hint-bar">综合得分 = 规模分与偏好分的几何合成（两维先在 log 空间做稳健标准化，中位数记 50 分、中间区段 1 IQR 约合 ±25 分，映射到 0–100 而不做硬截断）；名次区间表示权重在 0.3–0.7 间变化时的最好/最差名次。R（相对父类占比）与 R 判定仅作参考，不参与打分。</div>' +
     tableHTML(list, list.id) +
     '</section>';
 }
@@ -2247,6 +2218,8 @@ function buildExportRecords(result) {
         P: list.hasRank ? fmt(row.P, 1) : '',
         composite: list.hasRank ? fmt(row.composite, 2) : '',
         rank: list.hasRank && row.rank !== null ? String(row.rank) : '',
+        rankLo: list.hasRank ? row.rankLo : null,
+        rankHi: list.hasRank ? row.rankHi : null,
         quad: list.hasRank ? row.qText + (list.smallSample ? '（样本较少）' : '') : '',
         interp: row.interp === '—' ? '' : row.interp
       });
@@ -2265,6 +2238,8 @@ function buildExportRecords(result) {
         P: fmt(row.P, 1),
         composite: fmt(row.composite, 2),
         rank: row.rank === null ? '' : String(row.rank),
+        rankLo: row.rankLo,
+        rankHi: row.rankHi,
         quad: row.qText + (result.mixed.smallSample ? '（样本较少）' : ''),
         interp: row.interp === '—' ? '' : row.interp
       });
@@ -2273,11 +2248,18 @@ function buildExportRecords(result) {
   return out;
 }
 
+/* 名次区间：权重在 0.3–0.7 间变化时的最好/最差名次；两端相同则只显示一个名次。 */
+function rankRangeText(rec) {
+  if (!isFiniteNumber(rec.rankLo) || !isFiniteNumber(rec.rankHi)) return '—';
+  return rec.rankLo === rec.rankHi ? String(rec.rankLo) : rec.rankLo + '–' + rec.rankHi;
+}
+
 function exportCells(rec) {
   /* 关键词 / 榜单名称 / 分组名 不写进表格：文件名就是当前关键词，sheet 名就是榜单/分组名，
      行内再存一遍属于重复信息。 */
+  var range = rankRangeText(rec);
   return [rec.name, rec.share, rec.tgi, rec.R, rec.Rstatus,
-    rec.S, rec.P, rec.composite, rec.rank, rec.quad, rec.interp];
+    rec.S, rec.P, rec.composite, rec.rank, range, rec.quad, rec.interp];
 }
 
 function exportLine(rec) {
@@ -2536,7 +2518,7 @@ async function exportCSV() {
     return;
   }
   const HEADERS = ['分类名', '原始占比', '原始TGI', 'R（相对父类占比）', 'R 判定',
-    '规模分S（稳健标准化）', '偏好分P（稳健标准化）', '综合得分（稳健等权）', '榜单内排名', '四象限标签', '一句解读'];
+    '规模分S（对数稳健标准化）', '偏好分P（对数稳健标准化）', '综合得分（几何合成）', '榜单内排名', '名次区间（权重0.3–0.7）', '四象限标签', '一句解读'];
   exportProgressNode(false, 0);
   if (token.gen !== state.generation || token.keyword !== state.currentKeyword) return;
   /* 按区块分 sheet 生成真正的 .xlsx（OOXML），避免全部区块挤在一张表里，且二进制格式无编码乱码问题。 */
