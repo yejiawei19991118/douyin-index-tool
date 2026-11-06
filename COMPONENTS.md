@@ -167,6 +167,20 @@
 | 使用方式（iPhone） | Safari 打开线上地址 → 分享 → 添加到主屏幕 | 全屏无地址栏运行；首次联网后资源进缓存，断网仍可导入分析；数据只在本机处理 |
 | 与 App 的边界 | — | 数据来源：只用「网页端抓取脚本」复制/下载 CSV 后导入；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录） |
 
+### APK 改动如何自动同步到脚本与 PWA
+
+两端不维护第二份实现：APK 侧改动在构建期进入网页产物，推送 `main` 即自动重建并发布（纯 `.md` 除外）。
+
+| APK 侧改动 | 同步方式 | 作用位置 |
+| --- | --- | --- |
+| `assets/ranking.html`（页面 / 交互 / 导出） | 构建时整页转换，只追加 PWA 标签与启动脚本 | PWA `index.html` |
+| `assets/scoring.js`（评分口径） | 原样复制，不另存副本 | PWA `scoring.js` |
+| `assets/extract.js`（抓取实现） | 原样拼接进用户脚本 | `.user.js` 的抓取逻辑 |
+| `AppUrls.java`（页面地址 / 参数） | 构建时解析 `BASE_URL`、路径常量与 `return` 表达式 → 注入 `PAGE_URLS` | 脚本「打开页面」四入口 |
+| `app/build.gradle` 的 `versionName` + 构建号 | 生成用户脚本 `@version`、SW 缓存名、页面版本标记 | 扩展自动更新、PWA 自动换缓存 |
+
+版本与升级链路：`@version = versionName + '.' + 构建号`（CI 取 `GITHUB_RUN_NUMBER`，本地取 git 提交数），每次构建都递增，扩展按 `@updateURL` 定期检查并更新；PWA 的 `CACHE_NAME` 带同一版本，新 SW `skipWaiting` + `clients.claim` 立即接管，页面回到前台时还会主动 `reg.update()`，因此下次打开即为新内容。构建脚本解析 `AppUrls.java` 失败会直接报错，杜绝两端地址悄悄分叉。
+
 **本地自测**：`node tools/build-pwa.js` 后用任意静态服务器指向 `pwa-dist/`，浏览器打开即可验证导入、排名、导出；Service Worker 需要 `http://localhost` 或 https 环境才会注册。
 
 ### 网页端抓取脚本（可选，iPhone 上的另一条入口）

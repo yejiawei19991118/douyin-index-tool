@@ -9,7 +9,8 @@
  */
 'use strict';
 
-const CACHE_NAME = 'dyrank-pwa-v1';
+/* 缓存名带构建版本（tools/build-pwa.js 注入）：每次发布都换新缓存，装完即接管 */
+const CACHE_NAME = 'dyrank-pwa-__CACHE_VERSION__';
 
 /* 相对路径以 sw.js 所在目录为基准（GitHub Pages 子路径部署同样适用） */
 const PRECACHE = [

@@ -36,6 +36,31 @@ function readUtf8(p) {
   return fs.readFileSync(p, 'utf8');
 }
 
+/*
+ * 构建号：CI 用运行号（每次推送必然递增，用户脚本靠它才会自动更新），
+ * 本地退回 git 提交数，取不到时兜底 0。@version = versionName + '.' + 构建号。
+ */
+function buildNumber() {
+  const ci = process.env.GITHUB_RUN_NUMBER;
+  if (ci && /^\d+$/.test(ci)) return ci;
+  try {
+    const n = require('child_process').execSync('git rev-list --count HEAD', {
+      cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore']
+    }).toString().trim();
+    return /^\d+$/.test(n) ? n : '0';
+  } catch (e) {
+    return '0';
+  }
+}
+
+function appVersionName() {
+  const m = readUtf8(path.join(ROOT, 'app', 'build.gradle')).match(/versionName\s+"([^"]+)"/);
+  if (!m) fail('app/build.gradle 未找到 versionName');
+  return m[1];
+}
+
+const VERSION = appVersionName() + '.' + buildNumber();
+
 function writeFile(rel, content) {
   const target = path.join(OUT_DIR, rel);
   fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -187,6 +212,7 @@ function renderIcon(size, rounded) {
 
 const HEAD_TAGS = [
   '<!-- 本文件由 tools/build-pwa.js 从 app/src/main/assets/ranking.html 生成，请勿直接修改 -->',
+  '<meta name="dyrank-version" content="' + VERSION + '">',
   '<meta name="theme-color" content="#2563eb">',
   '<meta name="description" content="抖音指数人群分析 CSV 的离线综合排名工具（PWA）">',
   '<meta name="apple-mobile-web-app-capable" content="yes">',
@@ -214,16 +240,60 @@ function buildIndexHtml() {
 /* ============================ 用户脚本 ============================ */
 
 /*
+ * 页面地址的唯一来源是 Android 端 AppUrls.java：构建时解析 BASE_URL、各页面路径常量
+ * 与各构图方法的 return 表达式，生成「含 {kw} 占位符」的四条 URL 模板注入用户脚本。
+ * 这样改 APK 的地址或参数后，脚本自动跟着变，不需要人工同步第二份逻辑。
+ */
+function readPageUrlTemplates() {
+  const javaPath = path.join(ROOT, 'app', 'src', 'main', 'java', 'com', 'lmt', 'dyindex', 'AppUrls.java');
+  const src = readUtf8(javaPath);
+  const base = src.match(/BASE_URL\s*=\s*"([^"]+)"/);
+  if (!base) fail('AppUrls.java 未解析到 BASE_URL');
+
+  const RULES = {
+    keyword: ['targetUrl', 'ANALYSIS_URL'],
+    daren: ['darenSearchUrl', 'DAREN_SEARCH_URL'],
+    video: ['videoSearchUrl', 'VIDEO_SEARCH_URL'],
+    topic: ['topicSearchUrl', 'TOPIC_SEARCH_URL']
+  };
+
+  const templates = {};
+  Object.keys(RULES).forEach(function (type) {
+    const fn = RULES[type][0];
+    const constName = RULES[type][1];
+
+    const pathMatch = src.match(new RegExp(constName + '\\s*=\\s*BASE_URL\\s*\\+\\s*"([^"]+)"'));
+    if (!pathMatch) fail('AppUrls.java 未解析到 ' + constName);
+
+    // return <常量> + "?参数=" + enc(keyword) [+ "&其他参数"];  参数名与附加参数都来自 APK
+    const bodyMatch = src.match(new RegExp(
+      'String\\s+' + fn + '\\s*\\(' + '[\\s\\S]*?' +
+      'return\\s+' + constName + '\\s*\\+\\s*"([^"]*)"\\s*\\+\\s*enc\\(keyword\\)\\s*(?:\\+\\s*"([^"]*)")?'
+    ));
+    if (!bodyMatch) fail('AppUrls.java 的 ' + fn + ' 结构已变化，请同步更新 tools/build-pwa.js');
+
+    templates[type] = base[1] + pathMatch[1] + bodyMatch[1] + '{kw}' + (bodyMatch[2] || '');
+  });
+
+  return templates;
+}
+
+/*
  * 网页端抓取的唯一可行形态：把脚本注入 creator.douyin.com 页面内（同源），
  * 抓完把 CSV 交给 PWA。extract.js 与 Android 端共用，这里只拼接「网页版桥 + 悬浮面板」。
  */
 function buildUserscript() {
-  const gradle = readUtf8(path.join(ROOT, 'app', 'build.gradle'));
-  const versionMatch = gradle.match(/versionName\s+"([^"]+)"/);
-  const version = versionMatch ? versionMatch[1] : '0.0.0';
+  const pageUrls = readPageUrlTemplates();
+  Object.keys(pageUrls).forEach(function (type) {
+    if (pageUrls[type].indexOf('{kw}') < 0) fail('页面地址模板缺少关键词占位符：' + type);
+  });
 
-  const controller = readUtf8(path.join(PWA_SRC_DIR, 'userscript-controller.js'))
-    .replace(/__PWA_URL__/g, SITE_URL);
+  const rawController = readUtf8(path.join(PWA_SRC_DIR, 'userscript-controller.js'));
+  if (!/__PAGE_URLS__/.test(rawController)) fail('用户脚本缺少 __PAGE_URLS__ 注入点');
+  const controller = rawController
+    .replace(/__PWA_URL__/g, SITE_URL)
+    .replace(/__PAGE_URLS__/, function () { return JSON.stringify(pageUrls); });
+
   const extract = readUtf8(path.join(SRC_DIR, 'extract.js'));
   if (!/window\.__dyRun\s*=/.test(extract)) fail('extract.js 未导出 window.__dyRun');
   if (!/window\.DyBridge/.test(extract)) fail('extract.js 未通过 window.DyBridge 回传');
@@ -232,7 +302,7 @@ function buildUserscript() {
     '// ==UserScript==',
     '// @name         抖音指数人群分析抓取（网页版）',
     '// @namespace    https://github.com/yejiawei19991118/douyin-index-tool',
-    '// @version      ' + version,
+    '// @version      ' + VERSION,
     '// @description  在 creator.douyin.com 人群分析页抓取数据，复制 CSV 后导入同行 PWA 排名',
     '// @match        https://creator.douyin.com/*',
     '// @run-at       document-idle',
@@ -272,10 +342,16 @@ function main() {
   emit('scoring.js', fs.readFileSync(path.join(SRC_DIR, 'scoring.js')));
 
   // 3) PWA 专属资源（manifest / service worker / 启动脚本 / 补充样式）
+  //    sw.js 的缓存名带构建版本：每次发布都会生成新缓存并接管，避免旧资源残留
   for (const name of ['manifest.webmanifest', 'sw.js', 'web-boot.js', 'web.css']) {
     const p = path.join(PWA_SRC_DIR, name);
     if (!fs.existsSync(p)) fail('缺少 pwa-src/' + name);
-    emit(name, fs.readFileSync(p));
+    let content = readUtf8(p);
+    if (name === 'sw.js') {
+      if (!/__CACHE_VERSION__/.test(content)) fail('pwa-src/sw.js 缺少 __CACHE_VERSION__');
+      content = content.replace(/__CACHE_VERSION__/g, VERSION);
+    }
+    emit(name, content);
   }
 
   // 4) 用户脚本：网页端唯一可行的抓取形态（页面内同源执行），抓完把 CSV 交给 PWA
@@ -288,7 +364,7 @@ function main() {
 
   // 6) 输出清单，便于 CI 日志里核对
   const total = written.reduce((sum, p) => sum + fs.statSync(p).size, 0);
-  console.log('PWA 构建完成 → ' + OUT_DIR);
+  console.log('PWA 构建完成 → ' + OUT_DIR + '（版本 ' + VERSION + '）');
   written
     .map((p) => path.relative(OUT_DIR, p))
     .sort()

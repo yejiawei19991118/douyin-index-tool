@@ -5,7 +5,7 @@
  *   1. 收起 / 改造仅原生端有意义的入口（「返回抓取」「重新分析」），放出「加载示例数据」；
  *   2. 注入 CSV 导入卡片（选择文件 / 粘贴），复用页面已有的 handleFile 解析链路，
  *      不重复实现解析、清洗与评分；
- *   3. 注册 Service Worker 并给出「添加到主屏幕」提示；
+ *   3. 注册 Service Worker，回到前台时检查更新，并给出「添加到主屏幕」提示；
  *   4. 顶栏「iPhone 用法」入口：弹出抓取脚本 + 本应用的详细使用步骤。
  *
  * 依赖：ranking.html 内联脚本里的全局函数 handleFile / setCollapsed / showToast。
@@ -313,7 +313,19 @@
     // 本地 file:// 调试不注册；改为 http(s) 后才生效
     if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') return;
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function (e) {
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        // 每次回到前台检查一次更新（限频 10 分钟）：发布后无需用户手动清缓存
+        let lastCheck = 0;
+        function checkUpdate() {
+          if (document.visibilityState !== 'visible') return;
+          const now = Date.now();
+          if (now - lastCheck < 10 * 60 * 1000) return;
+          lastCheck = now;
+          reg.update().catch(function () { /* 离线时忽略 */ });
+        }
+        document.addEventListener('visibilitychange', checkUpdate);
+        setTimeout(checkUpdate, 60 * 1000);  // 打开 1 分钟后补一次，避免与首屏争带宽
+      }).catch(function (e) {
         console.warn('[PWA] Service Worker 注册失败：', e);
       });
     });

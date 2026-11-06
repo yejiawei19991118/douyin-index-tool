@@ -28,8 +28,8 @@
 
   var PAGE_TYPE_LABEL = { keyword: '关键词', topic: '话题', daren: '达人', video: '视频' };
 
-  /* 与 Android 端 AppUrls 完全一致：指数页根地址 + 四类入口 */
-  var INDEX_BASE = 'https://creator.douyin.com/creator-micro/creator-count/arithmetic-index';
+  /* 四类页面地址由构建脚本从 Android 端 AppUrls.java 解析注入（{kw} 为编码后的关键词） */
+  var PAGE_URLS = __PAGE_URLS__;
 
   var TEMPLATE =
     '<style>' +
@@ -206,11 +206,8 @@
   var KW_KEY = 'dywx.launchKw';
 
   function pageUrl(type, kw) {
-    var k = encodeURIComponent(kw);
-    if (type === 'daren') return INDEX_BASE + '/daren/search?keyword=' + k;
-    if (type === 'video') return INDEX_BASE + '/videosearch?query=' + k;
-    if (type === 'topic') return INDEX_BASE + '/topicsearch?topic=' + k;
-    return INDEX_BASE + '/analysis?keyword=' + k + '&tab=crowd&appName=aweme&source=creator';
+    var tpl = PAGE_URLS[type] || PAGE_URLS.keyword;
+    return tpl.replace('{kw}', encodeURIComponent(kw));
   }
 
   function toggleLauncher() {

@@ -1,7 +1,8 @@
 name: PWA
 
 # 把排名页转换成 PWA 并发布到 GitHub Pages（iPhone Safari 添加到主屏后可全屏、离线使用）。
-# 只在影响网页产物的文件变化时触发；纯文档改动不重新部署。
+# 除纯文档外的任何推送（含 APK 的 ranking.html / scoring.js / extract.js / AppUrls.java）
+# 都会重新构建并发布，用户脚本与 PWA 因此始终跟着 APK 一起升级。
 on:
   push:
     branches: [main]
@@ -26,6 +27,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # 本地构建号取自 git 提交数，需要完整历史；CI 里优先用运行号
+          fetch-depth: 0
 
       - name: 安装 Node
         uses: actions/setup-node@v4
@@ -50,6 +54,12 @@ jobs:
             || { echo "::error::用户脚本缺少 creator.douyin.com 匹配规则"; exit 1; }
           grep -q 'window.__dyRun' pwa-dist/douyin-index-extract.user.js \
             || { echo "::error::用户脚本未包含抓取实现"; exit 1; }
+          grep -q '@version      [0-9]' pwa-dist/douyin-index-extract.user.js \
+            || { echo "::error::用户脚本缺少版本号，扩展不会自动更新"; exit 1; }
+          grep -q 'dyrank-pwa-[0-9]' pwa-dist/sw.js \
+            || { echo "::error::Service Worker 缓存名未注入构建版本"; exit 1; }
+          grep -q 'name="dyrank-version"' pwa-dist/index.html \
+            || { echo "::error::PWA 页面缺少构建版本标记"; exit 1; }
           echo "PWA 产物自检通过"
 
       - name: 上传 Pages 产物
