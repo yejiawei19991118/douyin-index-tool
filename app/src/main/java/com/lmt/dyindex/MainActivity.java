@@ -452,6 +452,7 @@ public class MainActivity extends Activity {
         }
         keywordCache = kw;
         pageNameCache = "";
+        pageTypeCache = "";
         lastCsv = null;
         lastRowCount = 0;
         if (rankingBtn != null) {
@@ -548,11 +549,11 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             if (webView != null) {
-                webView.evaluateJavascript("!!window.__dyInjected", value -> {
+                // SPA 路由切换不会触发 onPageStarted/onPageFinished，轮询兜底预热 readyPromise；
+                // 预热脚本自带幂等守卫，把它和注入检查合并成一次跨进程调用，省掉一半 IPC。
+                webView.evaluateJavascript(POSTROBOT_READY_SEED + "\n;!!window.__dyInjected", value -> {
                     if (value == null || value.contains("false")) injectExtractor();
                 });
-                // SPA 路由切换不会触发 onPageStarted/onPageFinished，轮询兜底预热 readyPromise。
-                webView.evaluateJavascript(POSTROBOT_READY_SEED, null);
             }
             ui.postDelayed(this, 2500);
         }
@@ -567,6 +568,8 @@ public class MainActivity extends Activity {
     // 页面抓到的名称，按页型各自取标识：达人页=昵称，话题页=话题名，视频页=视频标题，关键词页=关键词名。
     // 状态栏展示与综合排名页导出都用它；抓取脚本猜不到名称时回退用户输入。
     private String pageNameCache = "";
+    // 页型（keyword/topic/daren/video）：排名页据此把「当前关键词」显示成当前话题/达人/视频。
+    private String pageTypeCache = "";
 
     // 打开综合排名分析页：把最近一次抓取的 CSV 直接传入，页面侧自动载入分析。
     private void openRanking() {
@@ -578,6 +581,7 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(this, RankingActivity.class);
         intent.putExtra(RankingActivity.EXTRA_CSV, csv);
         intent.putExtra(RankingActivity.EXTRA_KEYWORD, rankName);
+        intent.putExtra(RankingActivity.EXTRA_PAGE_TYPE, pageTypeCache);
         startActivity(intent);
     }
 
@@ -623,6 +627,7 @@ public class MainActivity extends Activity {
                 // 关键词=关键词名；状态展示与综合排名页导出都以它为准，识别不到时回退用户输入。
                 // 每次都以本次结果覆盖（含空串）：避免上一次页名残留，导致状态栏与导出名字串页。
                 pageNameCache = kw;
+                pageTypeCache = o.optString("pageType", "");
                 if (csv.isEmpty() || rows == 0) {
                     setStatus("未采集到数据，请确认已登录且处于人群分析页");
                     toast("未采集到数据：请确认已登录处于人群分析页");

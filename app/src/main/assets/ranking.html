@@ -119,8 +119,11 @@ a{color:var(--primary);text-decoration:none}
 .metric .num{font-size:24px;font-weight:600;line-height:1.2}
 .metric .lab{color:var(--muted);font-size:12px;margin-top:2px}
 .metric .sub{color:#9ca3af;font-size:11px}
-.tips-row{display:flex;align-items:baseline;gap:10px;padding:6px 0;justify-content:center}
-.tips-kw{font-size:18px;font-weight:700;color:#111827}
+/* 标签独占一行居中，标题/昵称在其下完整展示：不截断，只在超长英文串处强制换行，避免撑破容器。 */
+.tips-row{display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px 0}
+.tips-lab{flex:0 0 auto;white-space:nowrap;color:#6b7280;font-size:12px;background:#f3f4f6;border-radius:6px;padding:2px 8px}
+.tips-kw{width:100%;max-width:100%;font-size:16px;font-weight:700;color:#111827;line-height:1.4;
+  text-align:center;word-break:break-word;overflow-wrap:anywhere}
 .tips-sub{color:#6b7280;font-size:12px}
 .control-tips{padding-top:4px;border-top:1px dashed var(--border);margin-top:10px}
 
@@ -317,6 +320,7 @@ const state = {
   hasKeywordField: false,
   keywords: [],
   currentKeyword: '',
+  pageType: '',
   clean: null,
   keywordMeta: null,
   resultCache: new Map(),
@@ -1786,10 +1790,15 @@ function blockNOf(result, blockName) {
   return 0;
 }
 
+const PAGE_TYPE_LABEL = { keyword: '当前关键词', topic: '当前话题', daren: '当前达人', video: '当前视频' };
+
 function tipsHTML(result) {
   const clean = state.clean;
   const kw = state.hasKeywordField ? (result.keyword === UNLABELED_KW ? '未标注关键词' : result.keyword) : (clean.derivedKeyword || SINGLE_KW);
-  return '<div class="tips-row"><div class="tips-kw">' + esc(kw) + '</div><div class="tips-sub">当前关键词</div></div>';
+  const lab = PAGE_TYPE_LABEL[state.pageType] || '当前关键词';
+  /* 视频标题/达人昵称可能很长：标签固定不收缩，正文完整展示（不截断），超长英文串按需换行。 */
+  return '<div class="tips-row"><div class="tips-lab">' + lab + '</div>' +
+    '<div class="tips-kw">' + esc(kw) + '</div></div>';
 }
 
 function blockHint(blockName) {
@@ -2635,10 +2644,11 @@ function parseCsvText(text) {
 }
 
 /* 原生端在页面加载完成后调用：直接把抓取到的 CSV 文本灌入排名工具。 */
-window.loadFromCsv = function (csvText, sourceName) {
+window.loadFromCsv = function (csvText, sourceName, pageType) {
   try {
     resetForNewData();
     clearError();
+    state.pageType = pageType || '';
     const rows = parseCsvText(csvText);
     if (!rows.length) {
       showError('注入的 CSV 为空，无法分析。');
@@ -2660,7 +2670,7 @@ window.loadFromCsv = function (csvText, sourceName) {
 window.__autoLoadRanking = function () {
   const p = window.__rankingPayload;
   if (p && typeof p.csv === 'string' && p.csv.length > 0) {
-    window.loadFromCsv(p.csv, p.keyword || '');
+    window.loadFromCsv(p.csv, p.keyword || '', p.pageType || '');
   }
 };
 

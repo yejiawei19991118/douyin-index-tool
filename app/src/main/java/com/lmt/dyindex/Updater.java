@@ -405,6 +405,9 @@ public final class Updater {
                 }
                 if (!signatureMatches(app, file)) {
                     if (activity.isFinishing() || activity.isDestroyed()) {
+                        // 页面已销毁时弹窗无处可挂，但也不能静默丢弃：用应用上下文提示一次，
+                        // 安装包保留在共享目录，用户可手动重装。
+                        toast(app, "新旧安装包签名不一致，请卸载当前版本后重新安装：" + RELEASES_PAGE);
                         return;
                     }
                     activity.runOnUiThread(new Runnable() {

@@ -11,6 +11,8 @@ import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
+import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
@@ -37,10 +39,12 @@ public class RankingActivity extends Activity {
 
     public static final String EXTRA_CSV = "csv";
     public static final String EXTRA_KEYWORD = "keyword";
+    public static final String EXTRA_PAGE_TYPE = "pageType";
 
     private WebView webView;
     private String csv;
     private String keyword;
+    private String pageType;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -49,8 +53,10 @@ public class RankingActivity extends Activity {
 
         csv = getIntent().getStringExtra(EXTRA_CSV);
         keyword = getIntent().getStringExtra(EXTRA_KEYWORD);
+        pageType = getIntent().getStringExtra(EXTRA_PAGE_TYPE);
         if (csv == null) csv = "";
         if (keyword == null) keyword = "";
+        if (pageType == null) pageType = "";
 
         webView = new WebView(this);
         setContentView(webView);
@@ -86,11 +92,39 @@ public class RankingActivity extends Activity {
         try {
             // JSONObject.quote 生成合法 JS 字符串字面量，CSV 里的引号/换行/反斜杠均被正确转义。
             String js = "window.loadFromCsv(" + JSONObject.quote(csv)
-                    + "," + JSONObject.quote(keyword) + ");";
+                    + "," + JSONObject.quote(keyword)
+                    + "," + JSONObject.quote(pageType) + ");";
             webView.evaluateJavascript(js, null);
         } catch (Throwable t) {
             toast("数据注入失败：" + t.getMessage());
         }
+    }
+
+    @Override
+    protected void onPause() {
+        // 排名页里没有需要持续运行的动画，切后台时暂停 WebView 的 JS 计时器与渲染。
+        if (webView != null) webView.onPause();
+        super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (webView != null) webView.onResume();
+    }
+
+    @Override
+    protected void onDestroy() {
+        // WebView 必须先从视图树摘除再 destroy，否则会泄漏 Activity 与渲染进程资源。
+        if (webView != null) {
+            webView.stopLoading();
+            webView.removeJavascriptInterface("DyRankingBridge");
+            ViewParent parent = webView.getParent();
+            if (parent instanceof ViewGroup) ((ViewGroup) parent).removeView(webView);
+            webView.destroy();
+            webView = null;
+        }
+        super.onDestroy();
     }
 
     // ===== 页面 -> 原生 的回传桥（页面里的 window.DyRankingBridge）=====
@@ -101,8 +135,8 @@ public class RankingActivity extends Activity {
         @JavascriptInterface
         public void exportCsv(String text, String name) {
             if (text == null) text = "";
-            String fileName = (name == null || name.isEmpty()) ? "keyword-ranking.csv" : name;
-            String lower = fileName.toLowerCase();
+            String fileName = (name == null || name.isEmpty()) ? "keyword-ranking.csv" : CsvUtils.sanitizeFileName(name);
+            String lower = fileName.toLowerCase(java.util.Locale.ROOT);
             boolean isXlsx = lower.endsWith(".xlsx");
             String mime = isXlsx
                     ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -113,7 +147,10 @@ public class RankingActivity extends Activity {
                         : text.getBytes(StandardCharsets.UTF_8);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     Uri target = findDownloadsFile(fileName);
-                    if (target == null) {
+                    boolean reused = target != null;
+                    ContentValues pending = new ContentValues();
+                    pending.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                    if (!reused) {
                         ContentValues values = new ContentValues();
                         values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
                         values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
@@ -121,18 +158,21 @@ public class RankingActivity extends Activity {
                         values.put(MediaStore.MediaColumns.IS_PENDING, 1);
                         target = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
                         if (target == null) throw new Exception("无法在下载目录创建文件");
+                    } else {
+                        // 覆盖已有文件时先标回 pending，避免用户看到写了一半的文件；
+                        // 失败时只还原 pending 标记，绝不删除上一份已导出的完整结果。
+                        getContentResolver().update(target, pending, null, null);
                     }
                     try (OutputStream os = getContentResolver().openOutputStream(target, "wt")) {
                         if (os == null) throw new Exception("无法写入目标文件");
                         os.write(data);
                         os.flush();
                     } catch (Exception e) {
-                        getContentResolver().delete(target, null, null);
+                        if (reused) getContentResolver().update(target, doneValues(), null, null);
+                        else getContentResolver().delete(target, null, null);
                         throw e;
                     }
-                    ContentValues done = new ContentValues();
-                    done.put(MediaStore.MediaColumns.IS_PENDING, 0);
-                    getContentResolver().update(target, done, null, null);
+                    getContentResolver().update(target, doneValues(), null, null);
                     toast("已导出到系统下载目录：" + fileName);
                 } else {
                     File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
@@ -158,6 +198,12 @@ public class RankingActivity extends Activity {
                 public void run() { finish(); }
             });
         }
+    }
+
+    private static ContentValues doneValues() {
+        ContentValues v = new ContentValues();
+        v.put(MediaStore.MediaColumns.IS_PENDING, 0);
+        return v;
     }
 
     private Uri findDownloadsFile(String fileName) {
@@ -186,12 +232,4 @@ public class RankingActivity extends Activity {
         });
     }
 
-    @Override
-    protected void onDestroy() {
-        if (webView != null) {
-            webView.destroy();
-            webView = null;
-        }
-        super.onDestroy();
-    }
 }
