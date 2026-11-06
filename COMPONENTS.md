@@ -75,7 +75,7 @@
 | --- | --- | --- |
 | 配置 | `TITLES`、`REGION_TABS` | 六个区块名（地域/年龄/性别/用户内容浏览/手机品牌/手机价格）；地域维度优先级 **城市 → 城市级别 → 省份** |
 | 页型识别 | `detectPage()`、`pageLabel()` | 按 URL 识别 keyword（`/analysis?keyword=`）/ topic（`/analysis?topic=`）/ daren（`/daren/detail`）/ video（`/videoanalysis`）；区块按页面实际存在探测，缺失自动跳过（达人页无内容浏览块，仅达人页有手机分布块） |
-| 页名 | `pageName()`、`guessDisplayName()`、`DAREN_BLACKLIST`、`VIDEO_BLACKLIST` | 关键词/话题取 URL 参数；达人按黑名单+标点过滤猜顶部昵称（猜不到则原生沿用输入的抖音号）；视频猜标题，兜底 `视频+id` |
+| 页名 | `pageName()`、`guessDisplayName()`、`videoTitle()`、`accountContainers()`、`DAREN_BLACKLIST`、`TOPIC_BLACKLIST` | 关键词/话题取 URL 参数；达人按黑名单+标点过滤猜顶部昵称（猜不到则原生沿用输入的抖音号）；**视频**优先解析 `document.title`（形如「标题 - 抖音指数」），否则在顶部内容区取最长的中文候选（标题通常比昵称长），并跳过 `accountContainers()` 定位的作者信息区（含「抖音号/昵称/账号」标签的容器）、排除无中文的账号 ID 形态与说明性长句，兜底 `视频+id` |
 | 基础工具 | `sleep()`、`bridge()` | 延时；统一封装 `window.DyBridge` 回传 |
 | 区块定位 | `findTitleMarks()`、`sectionFor()`、`getCharts()`、`findChartIn()`、`sectionRoot()` | TreeWalker 扫纯文本节点定位标题；按垂直 + 水平距离判定图表归属；收集图表容器与 tooltip 兄弟节点；`sectionRoot` 取含 canvas 的最低祖先 |
 | canvas 采集 | `parseTip()`、`scanCanvas()` | 解析 tooltip 的「占比 / TGI」；多行 y × x 步进派发合成 mousemove 逼出 tooltip |
@@ -100,6 +100,7 @@
 | 数据入口 | `window.loadFromCsv()` / `parseCsvText()` | 原生传入 CSV 文本 → 内置 RFC4180 解析器（无第三方依赖）→ `buildTable` → `processTable`；自动完成清洗、打分、四象限、二级混合榜 |
 | 原生回传桥 | `DyRankingBridge`（`window.DyRankingBridge`） | `exportCsv(text, name)`：页面「导出结果」交由原生写入系统下载目录；`.xlsx` 走 base64 解码后二进制写入，`.csv` 走 UTF-8 字节写入；成功/失败由原生 Toast 单条提示（WebView 内 `<a download>` 不落盘）；`close()`：「返回抓取」关闭本 Activity |
 | 多 Sheet 导出 | `buildMultiSheetXlsx()`、`xlsxSheetXml()` | 纯 JS OOXML 生成器（crc32 + zip STORED + inline strings），一个区块一个 sheet；区块 sheet 隐藏 R/R状态 两列，**二级混合总榜** sheet 保留全部 14 列；仅对有数据的区块生成 sheet |
+| 导出命名 | `state.currentKeyword` | 文件名 `抖音指数_<页名>_综合排名.xlsx`、表内「关键词」列、页面标题都取自抓取侧的页名（`pageName`）；关键词页=关键词、话题页=话题名、达人页=昵称、**视频页=视频标题**（不再使用达人抖音号） |
 | 排名算法 | `cleanData` / `robustScores` / `buildList` / `buildKeywordResult` / `computeR` | 9 步数据清洗；占比→规模分 S、TGI→偏好分 P（稳健标准化：中位数 50、每 IQR=25 分）；composite = 0.5S + 0.5P 等权合成；四象限（HH 重点机会 / HL / LH / LL）；兴趣子类 R = 子类占比/父类占比×100，>100 标「超常发挥」 |
 | 标准区块 | `STANDARD_BLOCKS` | 地域分布-城市/城市级别/省份、年龄分布、性别分布、用户内容浏览分布、手机价格分布、手机品牌分布；缺失区块在覆盖率中如实标注 |
 | 资产独立性 | `ranking.html` | 已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行；CSV 解析统一走内联 `parseCsvText`（不依赖 PapaParse），Excel 解析在 XLSX 未加载时给出明确提示而非崩溃 |

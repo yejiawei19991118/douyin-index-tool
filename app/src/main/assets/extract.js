@@ -716,6 +716,79 @@
     return '';
   }
 
+  // 作者信息区（头像 + 昵称 + 抖音号）：视频页顶部与视频标题同处右侧内容区，
+  // 先找出含「抖音号 / 昵称 / 账号」标签的小容器，标题候选跳过这些容器内的文本，
+  // 避免把达人的抖音号当成视频标题。
+  function accountContainers() {
+    var roots = [];
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node;
+    while ((node = walker.nextNode())) {
+      var s = (node.nodeValue || '').trim();
+      if (!s || s.length > 20 || !/(抖音号|昵称|账号|UID|uid)/.test(s)) continue;
+      var root = node.parentElement;
+      if (!root) continue;
+      // 向上收敛到「只装作者信息」的小容器：父容器整段文字超过 80 字就停，防止吞掉标题块。
+      while (root.parentElement) {
+        var t = (root.parentElement.innerText || '').trim();
+        if (!t || t.length > 80) break;
+        root = root.parentElement;
+      }
+      roots.push(root);
+    }
+    return roots;
+  }
+
+  function withinAny(el, roots) {
+    for (var i = 0; i < roots.length; i++) {
+      try { if (roots[i] === el || roots[i].contains(el)) return true; } catch (e) { /* 忽略 */ }
+    }
+    return false;
+  }
+
+  // 视频页标题：优先 document.title（形如「视频标题 - 抖音指数」），
+  // 否则在顶部内容区取最长的中文候选（标题通常比昵称 / 抖音号长），
+  // 并排除作者信息区、账号 ID 形态（无中文）与说明性长句。
+  var VIDEO_LABELS = ['视频', '指数', '对比', '观众分析', '分析', '播放', '点赞', '评论',
+    '分享', '完播', '抖音', '时长', '发布', '返回', '下载', '更多', '登录', '作品', '查看',
+    '暂无', '数据概览', '作品分析', '核心数据', '观众画像'];
+  function videoTitle() {
+    try {
+      var t = (document.title || '').replace(/\s+/g, ' ').trim();
+      var m = t.match(/^(.{4,120}?)\s*(?:[|｜\-–—·]\s*)?(?:抖音指数|创作者中心|抖音创作服务平台|抖音)$/);
+      if (m && /[\u4e00-\u9fa5]/.test(m[1])) return m[1].trim();
+    } catch (e) { /* 忽略 */ }
+
+    var roots = accountContainers();
+    var minLeft = (window.innerWidth || 0) * 0.12;
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+    var node;
+    var best = '';
+    while ((node = walker.nextNode())) {
+      var s = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
+      if (s.length < 4 || s.length > 80) continue;
+      if (!/[\u4e00-\u9fa5]/.test(s)) continue;                 // 账号 ID 多为纯字母/数字
+      if (/[%。！？]$/.test(s)) continue;                          // 说明性长句
+      if (/抖音号|昵称|账号|UID|uid/.test(s)) continue;
+      var isLabel = false;
+      for (var i = 0; i < VIDEO_LABELS.length; i++) {
+        if (s === VIDEO_LABELS[i]) { isLabel = true; break; }     // 整串等于页签/指标名才排除，保留含这些字眼的标题
+      }
+      if (isLabel) continue;
+      for (var j = 0; j < NAV_BLACKLIST.length; j++) {
+        if (s === NAV_BLACKLIST[j]) { isLabel = true; break; }
+      }
+      if (isLabel) continue;
+      var el = node.parentElement;
+      if (!el || withinAny(el, roots)) continue;
+      var r;
+      try { r = el.getBoundingClientRect(); } catch (e) { continue; }
+      if (!r || r.width <= 0 || r.top < 0 || r.top > 900 || r.left < minLeft) continue;
+      if (!best || s.length > best.length) best = s;
+    }
+    return best;
+  }
+
   // 左侧竖排导航与页头通用文案：达人/话题/视频页的名字都在右侧内容区，这些先排除。
   var NAV_BLACKLIST = ['作品发布', '首页', '内容管理', '数据中心', '收入变现', '创作服务',
     'AI分身', '随变', '世界书', '造世界', 'AI工坊', '抖音指数', '创作指南', '趋势报告',
@@ -723,8 +796,6 @@
   var DAREN_BLACKLIST = NAV_BLACKLIST.concat(['达人', '分析', '粉丝', '关注', '获赞', '抖音号',
     'IP', '属地', '指数', '合作', '授权', '私信', '作品', '直播', '店铺', '更多', '暂无',
     '查看', '登录']);
-  var VIDEO_BLACKLIST = NAV_BLACKLIST.concat(['视频', '指数', '对比', '观众', '分析', '播放',
-    '点赞', '评论', '分享', '完播', '抖音', '时长', '发布', '返回', '下载', '更多', '登录']);
   var TOPIC_BLACKLIST = NAV_BLACKLIST.concat(['话题', '指数', '对比', '相关', '分析', '人群',
     '热门', '视频', '创作者', '排行', '添加', '点赞', '评论', '登录', '抖音']);
 
@@ -747,7 +818,8 @@
         return guessDisplayName(DAREN_BLACKLIST, 1, 30, 600);
       }
       if (page === 'video') {
-        var guess = guessDisplayName(VIDEO_BLACKLIST, 6, 80, 900);
+        // 视频页优先取视频标题，而不是顶部的达人昵称 / 抖音号。
+        var guess = videoTitle();
         var id = u.searchParams.get('id');
         return guess || (id ? '视频' + id : '');
       }
