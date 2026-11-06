@@ -74,7 +74,7 @@
     card.innerHTML =
       '<div class="upload-main">' +
         '<strong>导入人群分析 CSV</strong>' +
-        '<span>网页版无法进入抖音后台自动抓取：请在安卓 App 抓取后导出 CSV，再在此导入（也可先加载示例数据）。</span>' +
+        '<span>网页版页面内无法自动抓取：用安卓 App 抓取后导出 CSV，或在 creator.douyin.com 页面运行抓取脚本后「粘贴 CSV」（也可先加载示例数据）。</span>' +
       '</div>' +
       '<div class="upload-actions">' +
         '<button type="button" class="btn primary" id="pwaPickBtn">选择 CSV 文件</button>' +

@@ -40,11 +40,16 @@ jobs:
         run: |
           set -euo pipefail
           for f in index.html scoring.js web-boot.js web.css manifest.webmanifest \
-                   sw.js icons/icon-192.png icons/icon-512.png icons/icon-180.png; do
+                   sw.js douyin-index-extract.user.js \
+                   icons/icon-192.png icons/icon-512.png icons/icon-180.png; do
             test -s "pwa-dist/$f" || { echo "::error::缺少 pwa-dist/$f"; exit 1; }
           done
           grep -q 'rel="manifest"' pwa-dist/index.html || { echo "::error::index.html 未注入 manifest"; exit 1; }
           grep -q 'src="web-boot.js"' pwa-dist/index.html || { echo "::error::index.html 未注入启动脚本"; exit 1; }
+          grep -q '@match.*creator\.douyin\.com' pwa-dist/douyin-index-extract.user.js \
+            || { echo "::error::用户脚本缺少 creator.douyin.com 匹配规则"; exit 1; }
+          grep -q 'window.__dyRun' pwa-dist/douyin-index-extract.user.js \
+            || { echo "::error::用户脚本未包含抓取实现"; exit 1; }
           echo "PWA 产物自检通过"
 
       - name: 上传 Pages 产物

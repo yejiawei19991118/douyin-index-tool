@@ -24,6 +24,8 @@ const PWA_SRC_DIR = path.join(ROOT, 'pwa-src');
 const OUT_DIR = path.join(ROOT, 'pwa-dist');
 
 const APP_NAME = '抖音指数综合排名';
+const SITE_URL = 'https://yejiawei19991118.github.io/douyin-index-tool/';
+const USERSCRIPT_NAME = 'douyin-index-extract.user.js';
 
 function fail(msg) {
   console.error('构建失败：' + msg);
@@ -209,6 +211,46 @@ function buildIndexHtml() {
     .replace(/<\/body>/, BOOT_SCRIPT + '\n</body>');
 }
 
+/* ============================ 用户脚本 ============================ */
+
+/*
+ * 网页端抓取的唯一可行形态：把脚本注入 creator.douyin.com 页面内（同源），
+ * 抓完把 CSV 交给 PWA。extract.js 与 Android 端共用，这里只拼接「网页版桥 + 悬浮面板」。
+ */
+function buildUserscript() {
+  const gradle = readUtf8(path.join(ROOT, 'app', 'build.gradle'));
+  const versionMatch = gradle.match(/versionName\s+"([^"]+)"/);
+  const version = versionMatch ? versionMatch[1] : '0.0.0';
+
+  const controller = readUtf8(path.join(PWA_SRC_DIR, 'userscript-controller.js'))
+    .replace(/__PWA_URL__/g, SITE_URL);
+  const extract = readUtf8(path.join(SRC_DIR, 'extract.js'));
+  if (!/window\.__dyRun\s*=/.test(extract)) fail('extract.js 未导出 window.__dyRun');
+  if (!/window\.DyBridge/.test(extract)) fail('extract.js 未通过 window.DyBridge 回传');
+
+  const header = [
+    '// ==UserScript==',
+    '// @name         抖音指数人群分析抓取（网页版）',
+    '// @namespace    https://github.com/yejiawei19991118/douyin-index-tool',
+    '// @version      ' + version,
+    '// @description  在 creator.douyin.com 人群分析页抓取数据，复制 CSV 后导入同行 PWA 排名',
+    '// @match        https://creator.douyin.com/*',
+    '// @run-at       document-idle',
+    '// @grant        none',
+    '// @noframes',
+    '// @homepageURL  ' + SITE_URL,
+    '// @downloadURL  ' + SITE_URL + USERSCRIPT_NAME,
+    '// @updateURL    ' + SITE_URL + USERSCRIPT_NAME,
+    '// ==/UserScript==',
+    '',
+    '/* 本文件由 tools/build-pwa.js 生成（含 Android 端共用的 extract.js），请勿直接修改。 */'
+  ].join('\n');
+
+  return header + '\n\n' + controller +
+    '\n\n/* ==================== 以下为与 Android 端共用的抓取实现 extract.js ==================== */\n' +
+    extract;
+}
+
 /* ============================ 主流程 ============================ */
 
 function main() {
@@ -236,12 +278,15 @@ function main() {
     emit(name, fs.readFileSync(p));
   }
 
-  // 4) 图标：manifest 用带圆角透明底，iOS 用满幅方形（由系统切圆角）
+  // 4) 用户脚本：网页端唯一可行的抓取形态（页面内同源执行），抓完把 CSV 交给 PWA
+  emit(USERSCRIPT_NAME, buildUserscript());
+
+  // 5) 图标：manifest 用带圆角透明底，iOS 用满幅方形（由系统切圆角）
   emit('icons/icon-192.png', renderIcon(192, true));
   emit('icons/icon-512.png', renderIcon(512, true));
   emit('icons/icon-180.png', renderIcon(180, false));
 
-  // 5) 输出清单，便于 CI 日志里核对
+  // 6) 输出清单，便于 CI 日志里核对
   const total = written.reduce((sum, p) => sum + fs.statSync(p).size, 0);
   console.log('PWA 构建完成 → ' + OUT_DIR);
   written
