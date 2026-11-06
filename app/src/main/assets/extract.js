@@ -689,139 +689,51 @@
     return { keyword: '关键词', topic: '话题', daren: '达人', video: '视频' }[page] || '未知页型';
   }
 
-  // 达人昵称 / 视频标题 / 话题名在 URL 里没有（话题详情页 URL 只有数字 ID），
-  // 按「顶部内容区内的短文本叶子」猜测：黑名单滤掉页签/指标/按钮/左侧导航文案，
-  // 含标点或纯数字的行也排除，且只认右侧内容区（left >= 12% 视口宽，跳过左侧导航栏）。
-  // 猜不中返回空串，原生侧会回退用户输入框里的词（抖音号 / 搜索词），保证文件名可读。
-  function guessDisplayName(blacklist, minLen, maxLen, maxTop) {
-    var minLeft = (window.innerWidth || 0) * 0.12;
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-    var node;
-    while ((node = walker.nextNode())) {
-      var s = (node.nodeValue || '').trim();
-      if (s.length < minLen || s.length > maxLen) continue;
-      if (/^\d+$/.test(s) || /[%：:，,。.、/\\]/.test(s)) continue;
-      var bad = false;
-      for (var i = 0; i < blacklist.length; i++) {
-        if (s.indexOf(blacklist[i]) >= 0) { bad = true; break; }
-      }
-      if (bad) continue;
-      var el = node.parentElement;
-      if (!el) continue;
-      var r;
-      try { r = el.getBoundingClientRect(); } catch (e) { continue; }
-      if (!r || r.width <= 0 || r.top < 0 || r.top > maxTop || r.left < minLeft) continue;
-      return s;
-    }
-    return '';
+  // ---------- 页名解析（状态栏 / 排名页标题 / 导出文件名 / 关键词列的唯一来源） ----------
+  //
+  // 四种页面的 DOM 结构各不相同，页名逐个按「页面自己渲染的数据元素」取值，
+  // 不用坐标/黑名单做排除式猜测：
+  //   关键词页 / 话题页：页头筛选行上的主题 chip —— .filterDate-* 内的 .tag-*（取不到回退 URL 参数）
+  //   达人页          ：作者资料卡里的昵称节点    —— .author-* 卡片内的 .nickname-*
+  //   视频页          ：视频详情卡的标题          —— .videoAnalysis-* → .tabHead-* → span.title-*
+  // 这些类名是 CSS Modules 生成（语义前缀 + 构建哈希），按前缀匹配，哈希变化不影响定位。
+
+  function textOf(el) {
+    return el ? String(el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim() : '';
   }
 
-  // 作者信息区（头像 + 昵称 + 抖音号）：视频页顶部与视频标题同处右侧内容区，
-  // 先找出含「抖音号 / 昵称 / 账号」标签的小容器，标题候选跳过这些容器内的文本，
-  // 避免把达人的抖音号当成视频标题。
-  function accountContainers() {
-    var roots = [];
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-    var node;
-    while ((node = walker.nextNode())) {
-      var s = (node.nodeValue || '').trim();
-      if (!s || s.length > 20 || !/(抖音号|昵称|账号|UID|uid)/.test(s)) continue;
-      var root = node.parentElement;
-      if (!root) continue;
-      // 向上收敛到「只装作者信息」的小容器：父容器整段文字超过 80 字就停，防止吞掉标题块。
-      while (root.parentElement) {
-        var t = (root.parentElement.innerText || '').trim();
-        if (!t || t.length > 80) break;
-        root = root.parentElement;
-      }
-      roots.push(root);
-    }
-    return roots;
-  }
-
-  function withinAny(el, roots) {
-    for (var i = 0; i < roots.length; i++) {
-      try { if (roots[i] === el || roots[i].contains(el)) return true; } catch (e) { /* 忽略 */ }
-    }
-    return false;
-  }
-
-  // 视频页标题：优先 document.title（形如「视频标题 - 抖音指数」），
-  // 否则在顶部内容区取最长的中文候选（标题通常比昵称 / 抖音号长），
-  // 并排除作者信息区、账号 ID 形态（无中文）与说明性长句。
-  var VIDEO_LABELS = ['视频', '指数', '对比', '观众分析', '分析', '播放', '点赞', '评论',
-    '分享', '完播', '抖音', '时长', '发布', '返回', '下载', '更多', '登录', '作品', '查看',
-    '暂无', '数据概览', '作品分析', '核心数据', '观众画像'];
-  function videoTitle() {
-    try {
-      var t = (document.title || '').replace(/\s+/g, ' ').trim();
-      var m = t.match(/^(.{4,120}?)\s*(?:[|｜\-–—·]\s*)?(?:抖音指数|创作者中心|抖音创作服务平台|抖音)$/);
-      if (m && /[\u4e00-\u9fa5]/.test(m[1])) return m[1].trim();
-    } catch (e) { /* 忽略 */ }
-
-    var roots = accountContainers();
-    var minLeft = (window.innerWidth || 0) * 0.12;
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-    var node;
-    var best = '';
-    while ((node = walker.nextNode())) {
-      var s = (node.nodeValue || '').replace(/\s+/g, ' ').trim();
-      if (s.length < 4 || s.length > 80) continue;
-      if (!/[\u4e00-\u9fa5]/.test(s)) continue;                 // 账号 ID 多为纯字母/数字
-      if (/[%。！？]$/.test(s)) continue;                          // 说明性长句
-      if (/抖音号|昵称|账号|UID|uid/.test(s)) continue;
-      var isLabel = false;
-      for (var i = 0; i < VIDEO_LABELS.length; i++) {
-        if (s === VIDEO_LABELS[i]) { isLabel = true; break; }     // 整串等于页签/指标名才排除，保留含这些字眼的标题
-      }
-      if (isLabel) continue;
-      for (var j = 0; j < NAV_BLACKLIST.length; j++) {
-        if (s === NAV_BLACKLIST[j]) { isLabel = true; break; }
-      }
-      if (isLabel) continue;
-      var el = node.parentElement;
-      if (!el || withinAny(el, roots)) continue;
-      var r;
-      try { r = el.getBoundingClientRect(); } catch (e) { continue; }
-      if (!r || r.width <= 0 || r.top < 0 || r.top > 900 || r.left < minLeft) continue;
-      if (!best || s.length > best.length) best = s;
-    }
-    return best;
-  }
-
-  // 左侧竖排导航与页头通用文案：达人/话题/视频页的名字都在右侧内容区，这些先排除。
-  var NAV_BLACKLIST = ['作品发布', '首页', '内容管理', '数据中心', '收入变现', '创作服务',
-    'AI分身', '随变', '世界书', '造世界', 'AI工坊', '抖音指数', '创作指南', '趋势报告',
-    '服务中心', '创作灵感', '授权管理', '开放平台'];
-  var DAREN_BLACKLIST = NAV_BLACKLIST.concat(['达人', '分析', '粉丝', '关注', '获赞', '抖音号',
-    'IP', '属地', '指数', '合作', '授权', '私信', '作品', '直播', '店铺', '更多', '暂无',
-    '查看', '登录']);
-  var TOPIC_BLACKLIST = NAV_BLACKLIST.concat(['话题', '指数', '对比', '相关', '分析', '人群',
-    '热门', '视频', '创作者', '排行', '添加', '点赞', '评论', '登录', '抖音']);
-
-  // 结果里的「页名」：CSV 文件名与综合排名标题都以此为准。
   function pageName(page) {
+    var u;
+    try { u = new URL(location.href); } catch (e) { return ''; }
     try {
-      var u = new URL(location.href);
-      if (page === 'keyword') {
-        var k = u.searchParams.get('keyword');
-        return k ? decodeURIComponent(k) : '';
-      }
-      if (page === 'topic') {
-        // 话题详情页的 topic 参数是数字 ID，优先从页面顶部内容区取话题名，取不到再回退 ID。
-        var tn = guessDisplayName(TOPIC_BLACKLIST, 1, 30, 700);
+      if (page === 'keyword' || page === 'topic') {
+        // 关键词页与话题页共用同一套页头：筛选行上的主题 chip（.filterDate-* 内的 .tag-*）
+        // 显示的就是当前关键词 / 话题名，与页面所见一致；取不到再回退 URL 参数
+        //（话题的 topic 参数是数字 ID，仅作兜底）。
+        var chip = document.querySelector('[class*="filterDate-"] [class*="tag-"]');
+        var tn = textOf(chip).replace(/[×✕⨯]/g, '').trim();
         if (tn) return tn;
-        var t = u.searchParams.get('topic');
-        return t ? decodeURIComponent(t) : '';
+        if (page === 'keyword') {
+          // URLSearchParams 已解码，不能再 decodeURIComponent（含 % 的关键词会抛错）
+          return u.searchParams.get('keyword') || '';
+        }
+        return u.searchParams.get('topic') || '';
       }
       if (page === 'daren') {
-        return guessDisplayName(DAREN_BLACKLIST, 1, 30, 600);
+        // 作者资料卡：card.author-* > info-* > nickname-*（与「抖音号」同行区块）
+        var nick = document.querySelector('[class*="author-"] [class*="nickname-"]');
+        var dn = textOf(nick);
+        if (dn) return dn;
+        var uid = u.searchParams.get('uid');
+        return uid ? '达人' + uid : '';
       }
       if (page === 'video') {
-        // 视频页优先取视频标题，而不是顶部的达人昵称 / 抖音号。
-        var guess = videoTitle();
+        // 视频详情卡：videoAnalysis-* > tabHead-* > legend-* > span.title-*
+        var vt = textOf(document.querySelector(
+          '[class*="videoAnalysis-"] [class*="tabHead-"] span[class*="title-"]'));
+        if (vt) return vt;
         var id = u.searchParams.get('id');
-        return guess || (id ? '视频' + id : '');
+        return id ? '视频' + id : '';
       }
     } catch (e) { /* 忽略 */ }
     return '';
@@ -891,6 +803,8 @@
   async function extractAll() {
     await scrollThrough();
     var page = detectPage();
+    // 页名在切页签/下钻之前取：那时页面是原始结构，标题类元素一定在位。
+    var name = pageName(page);
     var sections = {};
 
     // 先做 canvas 图表（年龄 / 手机分布 / 兴趣），再抓性别与地域；
@@ -959,7 +873,7 @@
     return {
       ok: countRows(sections) > 0,
       pageType: page,
-      keyword: pageName(page),
+      keyword: name,
       generatedAt: new Date().toISOString(),
       chartCount: charts.length,
       debugSections: debugSections,

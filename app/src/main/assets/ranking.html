@@ -705,7 +705,11 @@ function cleanData(table, fieldMatch) {
   const mapping = fieldMatch.mapping;
   const hasKeywordField = fieldMatch.hasKeywordField;
   const sourceName = (table.meta && (table.meta.fileName || table.meta.source)) || '';
-  const derivedKeyword = hasKeywordField ? '' : deriveKeywordFromName(sourceName);
+  // 原生注入时 sourceName 已是最终页名（与状态栏同源），直接沿用，避免规则截断造成「四处不一致」；
+  // 只有手动上传的文件才需要从文件名推导关键词。
+  const derivedKeyword = hasKeywordField ? '' : (table.meta && table.meta.nativeName
+    ? sourceName.trim()
+    : deriveKeywordFromName(sourceName));
   const stats = {
     emptyCategory: 0,
     shareMissing: 0,
@@ -2661,7 +2665,8 @@ window.loadFromCsv = function (csvText, sourceName) {
     }
     const src = sourceName || '抖音指数抓取结果';
     state.file = { name: src, size: String(csvText).length, sample: false };
-    const table = buildTable(rows, { fileName: src, source: src, totalRows: rows.length - 1, extraCols: 0 });
+    // nativeName：src 是抓取侧回传的最终页名（与状态栏同源），不要再按文件名规则二次截断。
+    const table = buildTable(rows, { fileName: src, source: src, nativeName: true, totalRows: rows.length - 1, extraCols: 0 });
     processTable(table);
   } catch (e) {
     showError('CSV 解析失败：' + String(e && e.message ? e.message : e));

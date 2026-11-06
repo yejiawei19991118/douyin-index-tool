@@ -621,7 +621,8 @@ public class MainActivity extends Activity {
                 String kw = o.optString("keyword", "");
                 // 页面识别到的名称按页型各自取标识：达人=昵称、话题=话题名、视频=视频标题、
                 // 关键词=关键词名；状态展示与综合排名页导出都以它为准，识别不到时回退用户输入。
-                if (!kw.isEmpty()) pageNameCache = kw;
+                // 每次都以本次结果覆盖（含空串）：避免上一次页名残留，导致状态栏与导出名字串页。
+                pageNameCache = kw;
                 if (csv.isEmpty() || rows == 0) {
                     setStatus("未采集到数据，请确认已登录且处于人群分析页");
                     toast("未采集到数据：请确认已登录处于人群分析页");
