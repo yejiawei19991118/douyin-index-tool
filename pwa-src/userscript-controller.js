@@ -56,8 +56,24 @@
         'font-size:13px;min-height:36px;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
       '.btn.primary{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600}' +
       '.btn:active{transform:scale(.97)}' +
+      '.help{position:fixed;inset:0;z-index:2147483001;background:rgba(17,24,39,.45);' +
+        'display:flex;align-items:flex-end;justify-content:center}' +
+      '.help[hidden]{display:none}' +
+      '.help-panel{width:100%;max-width:560px;max-height:80vh;overflow-y:auto;background:#fff;' +
+        'border-radius:16px 16px 0 0;box-shadow:0 -8px 24px rgba(17,24,39,.22);' +
+        'padding:14px 16px calc(16px + env(safe-area-inset-bottom))}' +
+      '.help-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}' +
+      '.help-title{font-weight:600;font-size:15px}' +
+      '.help ol{margin:0;padding-left:20px;font-size:13px;line-height:1.7;color:#374151}' +
+      '.help li{margin-bottom:5px;word-break:break-word}' +
+      '.help .note{margin-top:12px;font-size:12px;color:#6b7280;line-height:1.6}' +
+      '.link{border:1px solid #e5e7eb;background:#fff;color:#4b5563;border-radius:999px;' +
+        'padding:6px 12px;font-size:12px;min-height:32px;cursor:pointer;' +
+        'box-shadow:0 2px 8px rgba(17,24,39,.12);-webkit-tap-highlight-color:transparent}' +
+      '.link:active{transform:scale(.97)}' +
     '</style>' +
     '<div class="wrap">' +
+      '<button type="button" class="link" data-act="help">iPhone 用法</button>' +
       '<div class="card" hidden>' +
         '<div class="head"><span class="title">抖音指数抓取</span>' +
           '<button type="button" class="close" aria-label="收起">×</button></div>' +
@@ -70,6 +86,20 @@
             '<button type="button" class="btn" data-act="download">下载 CSV</button>' +
             '<button type="button" class="btn" data-act="open">打开排名页</button>' +
           '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="help" hidden>' +
+        '<div class="help-panel">' +
+          '<div class="help-head"><span class="help-title">iPhone 用法</span>' +
+            '<button type="button" class="close" data-act="help-close" aria-label="关闭">×</button></div>' +
+          '<ol>' +
+            '<li>抓取前：登录创作者中心并打开人群分析页，等图表全部渲染完成</li>' +
+            '<li>点右下角「抓取数据」，期间保持在当前页面（脚本会自动滚动与下钻）</li>' +
+            '<li>抓完点「复制 CSV」；被系统拒绝时改用「下载 CSV」</li>' +
+            '<li>切到主屏的「抖音指数排名」→「粘贴 CSV」（或用「选择 CSV 文件」导入下载好的 CSV）</li>' +
+            '<li>首次使用排名页：Safari 打开后点「分享 → 添加到主屏幕」，之后全屏、断网也能用</li>' +
+          '</ol>' +
+          '<div class="note">CSV 只在本机流转；抓取脚本依赖抖音页面结构，改版可能失效，请控制抓取频率。</div>' +
         '</div>' +
       '</div>' +
       '<button type="button" class="fab">抓取数据</button>' +
@@ -93,6 +123,7 @@
     els.result = root.querySelector('.result');
     els.summary = root.querySelector('.summary');
     els.close = root.querySelector('.close');
+    els.help = root.querySelector('.help');
 
     els.fab.addEventListener('click', run);
     els.close.addEventListener('click', function () { els.card.hidden = true; });
@@ -104,6 +135,18 @@
         else if (act === 'download') doDownload();
         else if (act === 'open') window.open(PWA_URL, '_blank');
       });
+    });
+
+    // 「iPhone 用法」入口（卡片外的小胶囊按钮），未抓取时也能查看步骤
+    root.querySelectorAll('[data-act="help"]').forEach(function (btn) {
+      btn.addEventListener('click', function () { els.help.hidden = false; });
+    });
+
+    // 「iPhone 用法」弹层：关闭按钮 + 点遮罩空白处关闭
+    var helpClose = root.querySelector('[data-act="help-close"]');
+    if (helpClose) helpClose.addEventListener('click', function () { els.help.hidden = true; });
+    els.help.addEventListener('click', function (e) {
+      if (e.target === els.help) els.help.hidden = true;
     });
   }
 

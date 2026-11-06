@@ -1,11 +1,12 @@
 /*
  * PWA 启动脚本（仅网页版加载，Android WebView 不引用）
  *
- * 网页版没有 Android 的原生能力，因此这里只做三件事：
+ * 网页版没有 Android 的原生能力，因此这里只做以下四件事：
  *   1. 收起 / 改造仅原生端有意义的入口（「返回抓取」「重新分析」），放出「加载示例数据」；
  *   2. 注入 CSV 导入卡片（选择文件 / 粘贴），复用页面已有的 handleFile 解析链路，
  *      不重复实现解析、清洗与评分；
- *   3. 注册 Service Worker 并给出「添加到主屏幕」提示。
+ *   3. 注册 Service Worker 并给出「添加到主屏幕」提示；
+ *   4. 顶栏「iPhone 用法」入口：弹出抓取脚本 + 本应用的详细使用步骤。
  *
  * 依赖：ranking.html 内联脚本里的全局函数 handleFile / setCollapsed / showToast。
  */
@@ -32,6 +33,107 @@
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
   }
 
+  /* ============================ iPhone 用法 ============================ */
+
+  const SCRIPT_URL = 'https://yejiawei19991118.github.io/douyin-index-tool/douyin-index-extract.user.js';
+  let helpMask = null;
+
+  /* 教程内容：抓取脚本负责「拿数据」，本应用负责「排名分析」，两条数据来源分开写清楚 */
+  const HELP_HTML =
+    '<div class="pwa-sheet" role="dialog" aria-modal="true" aria-labelledby="pwaHelpTitle">' +
+      '<div class="pwa-sheet-head">' +
+        '<h2 id="pwaHelpTitle">iPhone 用法</h2>' +
+        '<button type="button" class="pwa-sheet-close" aria-label="关闭">×</button>' +
+      '</div>' +
+      '<div class="pwa-sheet-body pwa-help">' +
+        '<p class="pwa-lede">抓取脚本负责「拿到数据」，本应用负责「排名分析」。按下面顺序做一遍即可。</p>' +
+
+        '<h3>0. 先添加到主屏幕（只做一次）</h3>' +
+        '<ol class="pwa-steps">' +
+          '<li>用 Safari 打开本页面（就是现在的这个地址）</li>' +
+          '<li>点底部「分享」→「添加到主屏幕」→「添加」</li>' +
+          '<li>之后从主屏图标打开：全屏无地址栏，断网也能用</li>' +
+        '</ol>' +
+
+        '<h3>1. 安装抓取脚本（只做一次）</h3>' +
+        '<ol class="pwa-steps">' +
+          '<li>App Store 安装「Userscripts」，再到「设置 → Safari → 扩展」里启用，并允许它访问 creator.douyin.com</li>' +
+          '<li>Safari 打开 <a href="' + SCRIPT_URL + '" target="_blank" rel="noopener">抓取脚本安装页</a>，按扩展提示安装</li>' +
+        '</ol>' +
+
+        '<h3>2. 抓取并导入（每次分析都走一遍）</h3>' +
+        '<ol class="pwa-steps">' +
+          '<li>登录抖音创作者中心，打开人群分析页（关键词 / 达人 / 话题 / 视频都可以），等图表加载完成</li>' +
+          '<li>点右下角「抓取数据」；期间不要切走页面（脚本会自动滚动并逐个下钻）</li>' +
+          '<li>抓完后点「复制 CSV」；被系统拒绝时改用「下载 CSV」</li>' +
+          '<li>回到主屏的「抖音指数排名」→ 点「粘贴 CSV」；也可用「选择 CSV 文件」导入「文件」App 里已下载的 CSV</li>' +
+        '</ol>' +
+
+        '<h3>3. 离线使用</h3>' +
+        '<ol class="pwa-steps">' +
+          '<li>首次联网打开后，页面与评分算法会自动缓存</li>' +
+          '<li>之后断网也能打开、导入、排名、导出，数据全部留在本机</li>' +
+          '<li>只有「抓取」这一步需要联网，它发生在抖音页面，不在本应用内</li>' +
+        '</ol>' +
+
+        '<h3>4. 常见问题</h3>' +
+        '<ul class="pwa-steps pwa-faq">' +
+          '<li>「粘贴 CSV」没反应：剪贴板权限被拒或应用不在前台，改用「选择 CSV 文件」</li>' +
+          '<li>一直显示「尚未导入数据」：还没导入成功，可先点「加载示例数据」验证页面正常</li>' +
+          '<li>抓取结果为空：图表没加载完或不在人群分析页，刷新后等图表渲染完再抓</li>' +
+          '<li>找不到「抓取数据」按钮：确认脚本已安装并刷新页面；抖音改版也可能让采集失效</li>' +
+        '</ul>' +
+
+        '<p class="tip">抓取脚本依赖抖音页面结构（CSS Modules 类名、canvas tooltip），平台改版可能失效；' +
+          '高频抓取有账号风控风险，请控制频率并自行评估合规性。</p>' +
+      '</div>' +
+    '</div>';
+
+  function mountHelpButton() {
+    const right = document.querySelector('.topbar-right');
+    if (!right) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn ghost sm';
+    btn.id = 'pwaHelpBtn';
+    btn.textContent = 'iPhone 用法';
+    const collapse = byId('collapseBtn');
+    if (collapse && collapse.parentNode === right) right.insertBefore(btn, collapse);
+    else right.appendChild(btn);
+    btn.addEventListener('click', openHelp);
+  }
+
+  function buildHelp() {
+    helpMask = document.createElement('div');
+    helpMask.className = 'pwa-mask';
+    helpMask.innerHTML = HELP_HTML;
+    document.body.appendChild(helpMask);
+
+    const close = helpMask.querySelector('.pwa-sheet-close');
+    if (close) close.addEventListener('click', closeHelp);
+    // 点遮罩空白处关闭；点面板内部不关闭
+    helpMask.addEventListener('click', function (e) {
+      if (e.target === helpMask) closeHelp();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && helpMask && !helpMask.hidden) closeHelp();
+    });
+  }
+
+  function openHelp() {
+    if (!helpMask) buildHelp();
+    helpMask.hidden = false;
+    document.body.classList.add('pwa-help-open');
+    const close = helpMask.querySelector('.pwa-sheet-close');
+    if (close) close.focus();
+  }
+
+  function closeHelp() {
+    if (!helpMask) return;
+    helpMask.hidden = true;
+    document.body.classList.remove('pwa-help-open');
+  }
+
   /* ============================ 入口改造 ============================ */
 
   function adaptNativeOnlyUI() {
@@ -50,7 +152,7 @@
     // 首页空状态文案：原生端会自动载入，网页端需要明确引导导入
     const empty = byId('emptyState');
     if (empty && !hasLoadedData()) {
-      empty.textContent = '尚未导入数据：点「选择 CSV 文件」导入安卓 App 导出的 CSV，或先「加载示例数据」查看效果。';
+      empty.textContent = '尚未导入数据：点「粘贴 CSV」或「选择 CSV 文件」导入数据，也可先「加载示例数据」查看效果。';
     }
   }
 
@@ -74,7 +176,7 @@
     card.innerHTML =
       '<div class="upload-main">' +
         '<strong>导入人群分析 CSV</strong>' +
-        '<span>网页版页面内无法自动抓取：用安卓 App 抓取后导出 CSV，或在 creator.douyin.com 页面运行抓取脚本后「粘贴 CSV」（也可先加载示例数据）。</span>' +
+        '<span>本页不能直接抓取：先在创作者中心用抓取脚本取数（右上角「iPhone 用法」有详细步骤），再「粘贴 CSV」；也可先加载示例数据。</span>' +
       '</div>' +
       '<div class="upload-actions">' +
         '<button type="button" class="btn primary" id="pwaPickBtn">选择 CSV 文件</button>' +
@@ -220,6 +322,7 @@
   /* ============================ 启动 ============================ */
 
   adaptNativeOnlyUI();
+  mountHelpButton();
   mountInstallHint();
   mountImportCard();
   // 折叠态会同时藏起导入卡片与「当前关键词」标签，网页端默认展开

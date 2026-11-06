@@ -79,3 +79,104 @@
     text-align: center;
   }
 }
+
+/* ============================ 「iPhone 用法」底部弹层 ============================ */
+
+.pwa-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(17, 24, 39, .45);
+}
+.pwa-mask[hidden] {
+  display: none;
+}
+/* 弹层打开时锁住背景滚动，避免滚到底层页面 */
+body.pwa-help-open {
+  overflow: hidden;
+}
+
+.pwa-sheet {
+  width: 100%;
+  max-width: 600px;
+  max-height: 86vh;
+  max-height: 86dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 30px rgba(17, 24, 39, .22);
+  padding: 12px 18px calc(20px + env(safe-area-inset-bottom));
+}
+.pwa-sheet-head {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -12px -18px 6px;
+  padding: 12px 18px 10px;
+  background: #fff;
+  border-bottom: 1px solid #eef2f7;
+}
+.pwa-sheet-head h2 {
+  font-size: 16px;
+}
+.pwa-sheet-close {
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  font-size: 22px;
+  line-height: 1;
+  padding: 4px 6px;
+  min-width: 32px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pwa-help .pwa-lede {
+  margin: 6px 0 2px;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.6;
+}
+.pwa-help h3 {
+  margin: 16px 0 6px;
+  font-size: 14px;
+  color: #111827;
+}
+.pwa-help .pwa-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #374151;
+}
+.pwa-help .pwa-steps li {
+  margin-bottom: 5px;
+  word-break: break-word;
+}
+.pwa-help .pwa-faq li {
+  color: #4b5563;
+}
+.pwa-help a {
+  color: #2563eb;
+  text-decoration: underline;
+  word-break: break-all;
+}
+.pwa-help .tip {
+  margin-top: 14px;
+  background: #f8faff;
+  border: 1px solid #e0e7ff;
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #374151;
+}

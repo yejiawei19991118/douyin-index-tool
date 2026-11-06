@@ -151,7 +151,7 @@
 
 ## 七、PWA 网页版（iPhone Safari）
 
-**定位**：同一仓库派生的网页端，只负责「导入 CSV → 综合排名 → 导出 xlsx」，**不做抓取**。浏览器既不能向 `creator.douyin.com` 注入脚本，也无法读取跨域 DOM，自动抓取只能在 Android App 内完成；网页版的导入说明已写进页面卡片，避免用户误期待。
+**定位**：同一仓库派生的网页端，只负责「导入 CSV → 综合排名 → 导出 xlsx」，**页面本身不做抓取**。浏览器既不能向 `creator.douyin.com` 注入脚本，也无法读取跨域 DOM；网页端要用数据，靠同仓库派生的用户脚本在抖音页面内同源采集（见下「网页端抓取脚本」），或从 Android App 导出 CSV 导入。
 
 | 组件 | 位置 | 职责 |
 | --- | --- | --- |
@@ -159,13 +159,13 @@
 | 页面 | `pwa-dist/index.html` | 与 Android 端同一份排名页，业务逻辑零改动；两端差异只有注入的标签与启动脚本，改口径只需改 `ranking.html` 一处 |
 | 应用清单 | `pwa-src/manifest.webmanifest` | `display: standalone`、`theme_color: #2563eb`、`start_url: ./`（GitHub Pages 子路径部署同样可用）、192/512 图标 |
 | 离线缓存 | `pwa-src/sw.js` | 安装即预缓存页面壳与全部静态资源；导航请求网络优先、离线回退 `index.html`；静态资源缓存优先并在后台更新；`skipWaiting` + `clients.claim` 让新版本立即接管 |
-| 启动脚本 | `pwa-src/web-boot.js` | ①隐藏原生专属入口：「返回抓取」（依赖原生桥关闭 Activity）、「重新分析」（导入后无意义）；放出「加载示例数据」；②在控制区注入「选择 CSV 文件 / 粘贴 CSV」导入卡片，文件交给页面内置 `handleFile()`，复用同一条「编码校验 → 解析 → 清洗 → 评分 → 渲染」链路；③首次访问显示「添加到主屏幕」提示，关闭后写入 localStorage；④注册 Service Worker；⑤改写首页空状态文案为导入引导 |
+| 启动脚本 | `pwa-src/web-boot.js` | ①隐藏原生专属入口：「返回抓取」（依赖原生桥关闭 Activity）、「重新分析」（导入后无意义）；放出「加载示例数据」；②在控制区注入「选择 CSV 文件 / 粘贴 CSV」导入卡片，文件交给页面内置 `handleFile()`，复用同一条「编码校验 → 解析 → 清洗 → 评分 → 渲染」链路；③首次访问显示「添加到主屏幕」提示，关闭后写入 localStorage；④注册 Service Worker；⑤改写首页空状态文案为导入引导；⑥顶栏「iPhone 用法」按钮 → 底部弹层教程（添加主屏 / 安装抓取脚本 / 抓取并导入 / 离线 / 常见问题） |
 | 补充样式 | `pwa-src/web.css` | 导入卡片、提示条；并为 `#backBtn[hidden]` / `#reanalyzeBtn[hidden]` / `#sampleBtn[hidden]` 补显式 `display:none`——`.btn` 的 `inline-flex` 会盖掉浏览器对 `[hidden]` 的默认样式 |
 | 图标 | 构建期生成 `icons/icon-192.png`、`icon-512.png`、`icon-180.png` | PNG 编码手写（IHDR/IDAT/IEND + CRC32），无需 canvas 或三方库；manifest 用透明圆角版，apple-touch-icon 用满幅方形交由 iOS 自行切圆角 |
 | 用户脚本（网页端抓取） | `pwa-src/userscript-controller.js` → 构建产物 `pwa-dist/douyin-index-extract.user.js` | 网页端唯一的抓取形态：脚本注入 `creator.douyin.com` 页面内（同源），直接复用 `assets/extract.js` 的采集实现（由构建脚本原样拼接，不复制逻辑）；控制器提供 `window.DyBridge` 的网页版实现（`onLog` / `onResult` / `onError`）、右下角「抓取数据」悬浮按钮（Shadow DOM 隔离样式）、抓完后的「复制 CSV / 下载 CSV / 打开排名页」；`@match` 限定 creator 域、`@grant none` |
 | 部署 | `.github/workflows/pages.yml` | 推送 `main` 自动转换并发布到 GitHub Pages，产物自检（关键文件 + 注入标记）不通过即失败；见「六、构建与交付链」 |
 | 使用方式（iPhone） | Safari 打开线上地址 → 分享 → 添加到主屏幕 | 全屏无地址栏运行；首次联网后资源进缓存，断网仍可导入分析；数据只在本机处理 |
-| 与 App 的边界 | — | 数据来源：安卓 App 抓取后导出的 CSV（AirDrop / iCloud / 微信传文件到 iPhone），或复制到剪贴板后用「粘贴 CSV」；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录） |
+| 与 App 的边界 | — | 数据来源：用「网页端抓取脚本」（推荐）复制/下载 CSV 后导入；也可导入 Android 端导出的 CSV；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录） |
 
 **本地自测**：`node tools/build-pwa.js` 后用任意静态服务器指向 `pwa-dist/`，浏览器打开即可验证导入、排名、导出；Service Worker 需要 `http://localhost` 或 https 环境才会注册。
 
