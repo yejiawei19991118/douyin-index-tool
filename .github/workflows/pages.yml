@@ -28,7 +28,7 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
         with:
-          # 本地构建号取自 git 提交数，需要完整历史；CI 里优先用运行号
+          # 构建号取自 git 提交数（本地与 CI 一致），需要完整历史
           fetch-depth: 0
 
       - name: 安装 Node

@@ -37,20 +37,18 @@ function readUtf8(p) {
 }
 
 /*
- * 构建号：CI 用运行号（每次推送必然递增，用户脚本靠它才会自动更新），
- * 本地退回 git 提交数，取不到时兜底 0。@version = versionName + '.' + 构建号。
+ * 构建号：取 git 提交数（本地与 CI 一致、每次提交必然递增，用户脚本靠它才会自动更新）；
+ * 取不到时退回 CI 运行号，最后兜底 0。@version = versionName + '.' + 构建号。
  */
 function buildNumber() {
-  const ci = process.env.GITHUB_RUN_NUMBER;
-  if (ci && /^\d+$/.test(ci)) return ci;
   try {
     const n = require('child_process').execSync('git rev-list --count HEAD', {
       cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore']
     }).toString().trim();
-    return /^\d+$/.test(n) ? n : '0';
-  } catch (e) {
-    return '0';
-  }
+    if (/^\d+$/.test(n)) return n;
+  } catch (e) { /* 无 git 环境时继续退回 CI 运行号 */ }
+  const ci = process.env.GITHUB_RUN_NUMBER;
+  return ci && /^\d+$/.test(ci) ? ci : '0';
 }
 
 function appVersionName() {
