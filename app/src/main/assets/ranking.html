@@ -1008,6 +1008,9 @@ function buildParentIndex(kept) {
   return { index: index, dupSet: dupSet };
 }
 
+/* R = 二级占比 ÷ 父类占比 × 100，仅表示「相对父类的大小」，不参与综合分与排名。
+   实测存在 R>100（子类占比高于父类总量），说明一级/二级不是严格的加和拆分关系，
+   因此这里只做中性判定，不用「超常发挥」这类带褒贬的说法。 */
 function computeR(record, parentInfo) {
   const parentName = record.category.split('_')[0];
   const key = record.keyword + SEP + parentName;
@@ -1016,7 +1019,7 @@ function computeR(record, parentInfo) {
   const parentShare = parentInfo.index.get(key);
   if (parentShare === 0) return { status: '父类占比为 0', value: null };
   const R = record.share / parentShare * 100;
-  return { status: R > 100 ? '超常发挥' : '正常', value: R, parentName: parentName, parentShare: parentShare };
+  return { status: R > 100 ? '高于父类' : '未超父类', value: R, parentName: parentName, parentShare: parentShare };
 }
 
 /* ============================ 榜单计算 ============================ */
@@ -1031,8 +1034,8 @@ function rankingComparator(a, b) {
 
 function interpretationOf(row, isMixed) {
   if (!row.qCode) return '—';
-  if (isMixed && row.Rstatus === '超常发挥' && isFiniteNumber(row.R)) {
-    return '相对父类强度 ' + fmt(row.R, 1) + '%，属超常发挥，需结合业务含义解读。';
+  if (isMixed && row.Rstatus === '高于父类' && isFiniteNumber(row.R)) {
+    return '该二级占比高于父类总量（R=' + fmt(row.R, 1) + '%），说明一/二级并非严格加和拆分，以占比本体为准。';
   }
   switch (row.qCode) {
     case 'HH':
@@ -1180,12 +1183,13 @@ function buildKeywordResult(keyword) {
     if (r._tgiAbnormal) return;
     const rInfo = computeR(r, parentInfo);
     if (rInfo.value === null) {
+      /* R 只是说明列，不参与综合分与排名：这类行同样要进混合榜，
+         否则榜单样本量会随「页面是否展示父类行」而缩水。异常明细照旧记录，供诊断参考。 */
       const item = '第 ' + r._rowIndex + ' 行：' + r.category + '（父类 ' + (rInfo.parentName || r.category.split('_')[0] || '(空)') + '）';
       const kind = rInfo.status === '父类重复' ? 'dup' : (rInfo.status === '父类缺失' ? 'missing' : 'zero');
       unavailable[kind + 'Total'] += 1;
       /* 明细只保留前 LIST_TRUNCATE 条，计数单独累加，避免大文件下内存膨胀 */
       if (unavailable[kind].length < LIST_TRUNCATE) unavailable[kind].push(item);
-      return;
     }
     secondaryRows.push({
       category: r.category,
@@ -1196,14 +1200,14 @@ function buildKeywordResult(keyword) {
       _rowIndex: r._rowIndex,
       R: rInfo.value,
       Rstatus: rInfo.status,
-      parentName: rInfo.parentName,
+      parentName: rInfo.parentName || r.category.split('_')[0],
       parentShare: rInfo.parentShare
     });
   });
 
   mixedList = buildList(secondaryRows, { id: 'mixed', name: '二级混合总榜', isMixed: true });
 
-  const superCount = mixedList.rows.filter(function (r) { return r.Rstatus === '超常发挥'; }).length;
+  const superCount = mixedList.rows.filter(function (r) { return r.Rstatus === '高于父类'; }).length;
 
   return {
     keyword: keyword,
@@ -1662,8 +1666,8 @@ function quadrantCell(row, list) {
 
 function rStatusTag(status) {
   const map = {
-    '超常发挥': 'r-super',
-    '正常': 'r-normal',
+    '高于父类': 'r-super',
+    '未超父类': 'r-normal',
     '父类重复': 'r-dup',
     '父类缺失': 'r-miss',
     '父类占比为 0': 'r-miss'
@@ -1707,8 +1711,8 @@ function buildMixedTableHTML(list) {
     thSort('所属一级类目', 'parent', list, 120, false, false) +
     thSort('原始占比', 'share', list, 90, true, true) +
     thSort('父类占比', 'parentShare', list, 90, false, false) +
-    thSort('R', 'R', list, 80, true, true) +
-    thSort('R 状态', 'Rstatus', list, 110, false, false) +
+    thSort('R（相对父类占比）', 'R', list, 130, true, true) +
+    thSort('R 判定', 'Rstatus', list, 100, false, false) +
     thSort('原始 TGI', 'tgi', list, 80, true, true) +
     thSort('规模分 S（稳健）', 'S', list, 100, true, true) +
     thSort('偏好分 P（稳健）', 'P', list, 100, true, true) +
@@ -1855,7 +1859,7 @@ function mixedHTML(result) {
   return '<section class="card" id="card-mixed">' +
     '<div class="card-head"><h2>二级混合总榜</h2><span class="meta">榜单有效记录 ' + list.n + ' 条' +
     (list.n > RANK_DISPLAY_LIMIT ? '，展示 Top' + RANK_DISPLAY_LIMIT : '，展示全部 ' + list.n + ' 条') + '</span></div>' +
-    '<div class="hint-bar">本榜为混合总榜，前排可能被超常发挥记录占据，基本盘请结合 R 状态列判断。</div>' +
+    '<div class="hint-bar">本榜按「原始占比（规模）+ 原始 TGI（偏好）」等权综合排名；R（相对父类占比）与 R 判定仅作参考，不参与打分。</div>' +
     tableHTML(list, list.id) +
     '</section>';
 }
@@ -2424,9 +2428,9 @@ function bytesToBase64(bytes) {
 
 function buildMultiSheetXlsx(result, records, headers) {
   /* 按 sheet 分组，顺序固定为 STANDARD_BLOCKS + 二级混合总榜。
-     区块 sheet 去掉 R / R 状态两列（只有二级混合总榜有 R 值），混合总榜保留完整列。 */
-  var R_IDX = headers.indexOf('R');          /* 第7列 */
-  var RSTATUS_IDX = headers.indexOf('R状态'); /* 第8列 */
+     区块 sheet 去掉 R / R 判定两列（只有二级混合总榜有 R 值），混合总榜保留完整列。 */
+  var R_IDX = headers.indexOf('R（相对父类占比）'); /* 第7列 */
+  var RSTATUS_IDX = headers.indexOf('R 判定');      /* 第8列 */
   var blockColIdx = headers.map(function (_, i) { return i; })
     .filter(function (i) { return i !== R_IDX && i !== RSTATUS_IDX; });
   var blockHeaders = blockColIdx.map(function (i) { return headers[i]; });
@@ -2531,7 +2535,7 @@ async function exportCSV() {
     showToast('当前关键词无有效数据，无法导出。');
     return;
   }
-  const HEADERS = ['分类名', '原始占比', '原始TGI', 'R', 'R状态',
+  const HEADERS = ['分类名', '原始占比', '原始TGI', 'R（相对父类占比）', 'R 判定',
     '规模分S（稳健标准化）', '偏好分P（稳健标准化）', '综合得分（稳健等权）', '榜单内排名', '四象限标签', '一句解读'];
   exportProgressNode(false, 0);
   if (token.gen !== state.generation || token.keyword !== state.currentKeyword) return;
