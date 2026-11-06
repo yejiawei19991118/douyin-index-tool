@@ -426,9 +426,6 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new DyBridge(), "DyBridge");
         // 打开 APK 后不自动跳转、不自动抓取，全部由用户手动发起。
         keywordCache = DEFAULT_KEYWORD;
-
-        // 启动时静默检查一次新版本（有更新才弹窗，失败不打扰）。
-        Updater.checkAndPrompt(this, false);
     }
 
     // 切换抓取模式：更新 chips 选中态与输入框提示；不自动跳转，仍由「打开」触发。
@@ -662,6 +659,8 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().flush();
         // 上一次更新下载若已结束（进程曾被杀导致完成广播丢失），这里补上安装。
         Updater.resumePendingInstall(this);
+        // 每次重新打开/回到前台都静默检查更新：有新版即后台下载并调起安装器。
+        Updater.checkAndPrompt(this, false);
         // 仅在前台轮询注入脚本与预热 seed，切后台（如打开排名页）时停止以省电省 CPU。
         ui.removeCallbacks(pollReinject);
         ui.post(pollReinject);

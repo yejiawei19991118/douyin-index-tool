@@ -41,7 +41,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 内置版本更新：打开应用时静默查一次 GitHub Release → 有新版则弹窗 → 一键下载并调起系统安装器。
+ * 内置版本更新：每次回到前台都静默查一次 GitHub Release → 有新版则后台下载并调起系统安装器。
  *
  * 免登录读取公开仓库的 Releases API（私有仓库会返回 404，此时给出可读提示而非崩溃）。
  * 仅使用 Android 框架（含框架自带的 org.json），无任何第三方依赖。
@@ -64,15 +64,13 @@ public final class Updater {
     /** 单次网络请求超时。 */
     private static final int TIMEOUT_MS = 8000;
 
-    /** 自动检查的最小间隔（冷启动频繁时不必反复请求）。 */
-    private static final long AUTO_INTERVAL_MS = 6L * 60 * 60 * 1000;
+    /**
+     * 自动检查的进程内冷却：只挡「刚从排名页返回」「取消安装后立刻重回前台」这类秒级重复，
+     * 冷却时间一过、或进程重启后再次打开，仍会重新检查。
+     */
+    private static final long AUTO_COOLDOWN_MS = 60L * 1000;
 
     private static final String PREFS = "dyindex_update";
-    private static final String KEY_LAST_CHECK = "last_check";
-    /** 用户选择「稍后」的 tag，同一版本不再重复打扰。 */
-    private static final String KEY_SKIPPED = "skipped_tag";
-    /** 本次自动更新已触发过的 tag——避免每次启动都重复发起同一版本的下载。 */
-    private static final String KEY_AUTO_TAG = "auto_update_tag";
     /** 进行中的下载：进程若在下载期间被回收，onResume 靠这几个字段接续安装。 */
     private static final String KEY_PENDING_ID = "pending_download_id";
     private static final String KEY_PENDING_NAME = "pending_file_name";
@@ -88,6 +86,9 @@ public final class Updater {
 
     /** 是否已有一次检查在跑：避免自动检查与手动检查并发重复请求。 */
     private static final AtomicBoolean sChecking = new AtomicBoolean(false);
+
+    /** 上次自动检查的时间（仅进程内，进程重启即清零，保证每次重新打开都查一次）。 */
+    private static long sLastAutoCheckAt = 0L;
 
     /** 下载完成广播接收器（仅在下载期间注册）。 */
     private static BroadcastReceiver sReceiver;
@@ -121,16 +122,19 @@ public final class Updater {
     /**
      * 检查是否有新版本。
      *
-     * @param manual true=用户点「更新」触发（无视节流，且无论结果都给出提示）；
-     *               false=启动时自动触发（6 小时内只查一次，失败静默）
+     * @param manual true=用户点「更新」触发（无视冷却，且无论结果都给出提示）；
+     *               false=每次回到前台自动触发（仅 60s 进程内冷却，失败静默）
      */
     public static void checkAndPrompt(final Activity activity, final boolean manual) {
         if (activity == null) return;
         final Context app = activity.getApplicationContext();
         final SharedPreferences sp = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        final long now = System.currentTimeMillis();
 
-        if (!manual && now - sp.getLong(KEY_LAST_CHECK, 0L) < AUTO_INTERVAL_MS) return;
+        if (!manual) {
+            long now = System.currentTimeMillis();
+            if (now - sLastAutoCheckAt < AUTO_COOLDOWN_MS) return;
+            sLastAutoCheckAt = now;
+        }
 
         if (!sChecking.compareAndSet(false, true)) {
             if (manual) toast(app, "正在检查更新，请稍候…");
@@ -143,8 +147,6 @@ public final class Updater {
             @Override
             public void run() {
                 try {
-                    // 无论成功与否都记录时间：否则离线时每次冷启动都会重发请求。
-                    sp.edit().putLong(KEY_LAST_CHECK, now).apply();
                     final Release r = fetchLatest();
                     if (r == null) {
                         if (manual) {
@@ -156,9 +158,11 @@ public final class Updater {
                         if (manual) toast(app, "已是最新版本 " + currentName);
                         return;
                     }
-                    // 同一版本的自动更新已触发过，跳过；等更高版本 tag 出来才再下一次。
-                    if (r.tag.equals(sp.getString(KEY_SKIPPED, ""))) return;
-                    if (r.tag.equals(sp.getString(KEY_AUTO_TAG, ""))) return;
+                    // 已有下载在途：交给 onResume 里的 resumePendingInstall 接续，不重复发起。
+                    if (sp.getLong(KEY_PENDING_ID, -1L) >= 0) {
+                        if (manual) toast(app, "安装包正在下载，完成后会自动调起安装");
+                        return;
+                    }
                     if (!r.downloadable()) {
                         if (manual) toast(app, "发现新版本 " + r.version + "，但未找到可下载的安装包");
                         return;
@@ -168,7 +172,6 @@ public final class Updater {
                         public void run() {
                             if (activity.isFinishing() || activity.isDestroyed()) return;
                             startDownload(activity, r);
-                            sp.edit().putString(KEY_AUTO_TAG, r.tag).apply();
                             toast(app, "发现新版本 " + r.version + "，后台下载中…");
                         }
                     });

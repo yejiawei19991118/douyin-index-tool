@@ -13,7 +13,7 @@
 | 布局骨架 | `onCreate` | 纵向四段：模式切换 chips / 顶部输入栏 / WebView / 底部控制区 |
 | 模式切换组件 | `MODE_*`、`MODE_LABELS`、`MODE_HINTS`、`modeChips`、`setMode()` | 输入框上方一行单选 chips：关键词（默认）/ 达人 / 视频 / 话题；选中态主色实心，未选描边；切换只更新选中态与输入框 hint，不自动跳转 |
 | 关键词输入组件 | `keywordInput`、`openBtn`、`openKeyword()` | EditText（预填 + 圆角底 + 按模式换 hint）+「打开」按钮，支持软键盘回车触发；按模式跳对应页面：关键词直达分析页（自动抓取），达人→`/daren/search`、视频→`/videosearch`、话题→`/topicsearch`（状态栏引导手动进详情切分析页签后再抓取） |
-| 更新入口 | `updateBtn` | 顶栏「更新」按钮 → 手动检查新版本（启动时另有静默自动检查，见「内置版本更新」） |
+| 更新入口 | `updateBtn` | 顶栏「更新」按钮 → 手动检查新版本（每次回到前台另有静默自动检查，见「内置版本更新」） |
 | 网页承载组件 | `webView` + `WebSettings` | JS / DOM 存储 / 数据库 / 宽视口 / 概览模式 / 桌面 UA / 混合内容兼容 |
 | 登录态组件 | `CookieManager`、`onResume`、`onPause`、`onPageFinished` | 接受第三方 Cookie；在页面加载完成、回前台、切后台三处 `flush()` 落盘，实现免重复扫码 |
 | 导航与进度 | `WebViewClient.onPageFinished`、`onProgressChanged`、`onConsoleMessage` | 页面完成即注入脚本；加载百分比可视化；页面 JS 报错转 logcat（tag `DyIndexJS`） |
@@ -59,7 +59,7 @@
 
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
-| 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 启动静默查（6h 节流）、`manual=true` 用户点「更新」（无视节流并回提示）；有新版才弹窗；私有仓库 404 给可读提示而非崩溃 |
+| 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 每次重新打开/回到前台都静默查（仅 60s 进程内冷却、失败静默）、`manual=true` 用户点「更新」（无视冷却并回提示）；发现新版即后台下载并调起系统安装器（同版本已有下载在途时跳过）；私有仓库 404 给可读提示而非崩溃 |
 | 版本比对 | `Updater.parseRelease()` + `VersionUtils` | 取 `tag_name` 规整后与当前 `versionName` 比较；从 `assets` 挑 `.apk`（优先带 `release` 字样）与 `.apk.sha256` |
 | 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置）；下载到应用私有 `updates/` 目录；下载前清理遗留安装包 |
 | 校验与安装 | `Updater.handleIfFinished()` | 下载完成广播 / onResume 补装两路；SHA-256 摘要校验 → 签名兼容性比对 → 调起系统安装器；签名不一致时引导卸载重装；**所有 UI 回调（runOnUiThread / 弹对话框）均先判 `isFinishing() || isDestroyed()`**，避免 Activity 销毁后崩溃 |
