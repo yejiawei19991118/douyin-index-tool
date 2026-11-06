@@ -2282,6 +2282,8 @@ function exportLine(rec) {
    避免 SpreadsheetML 文本在中文系统下被按 GBK 解析导致乱码。 */
 function xmlEsc(s) {
   return String(s == null ? '' : s)
+    /* XML 1.0 不允许 0x00-0x1F 控制字符（\t\n\r 除外），混入会让 Excel 判定文件损坏 */
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/\r/g, '&#13;').replace(/\n/g, '&#10;').replace(/\t/g, '&#9;');
 }
@@ -2412,9 +2414,16 @@ function zipStore(files) {
 }
 
 function bytesToBase64(bytes) {
-  var bin = '';
-  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
+  /* 分块转换：多 sheet 大表可达数 MB，逐字节累加字符串在移动端会很慢；
+     按 8KB 分块后一次性 join，既快又不会触发调用栈上限。 */
+  var parts = [];
+  for (var i = 0; i < bytes.length; i += 8192) {
+    var end = Math.min(i + 8192, bytes.length);
+    var chunk = '';
+    for (var j = i; j < end; j++) chunk += String.fromCharCode(bytes[j]);
+    parts.push(chunk);
+  }
+  return btoa(parts.join(''));
 }
 
 function buildMultiSheetXlsx(result, records, headers) {
@@ -2627,7 +2636,7 @@ function parseCsvText(text) {
       }
       field += c; i++; continue;
     }
-    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === '"' && field === '') { inQuotes = true; i++; continue; }
     if (c === ',') { row.push(field); field = ''; i++; continue; }
     if (c === '\r') {
       if (s.charAt(i + 1) === '\n') i++;

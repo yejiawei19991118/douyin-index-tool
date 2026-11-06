@@ -1,15 +1,24 @@
 name: Release
 
-# 推送 v* 标签即触发：自动构建 release 包 → 校验 → 发布 Release。
-# 从此版本交付不再依赖本机手动命令链。
+# 交付自动化：任何推送到 main 的代码变更都会自动构建 release 包、递增版本并发布；
+# 同时保留推送 v* 标签的触发方式（用于手动补发/回滚到指定标签）。
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
 
-# 创建 Release / 上传资产需要写权限
+# 创建 Release / 上传资产 / 自动打标签需要写权限
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -19,6 +28,9 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # 版本号依赖提交数，必须取完整历史（浅克隆会恒为 1）
+          fetch-depth: 0
 
       # 先确认签名 Secrets 齐全，避免白跑一轮构建后才失败
       - name: 校验签名 Secrets
@@ -38,6 +50,25 @@ jobs:
             exit 1
           fi
           echo "签名 Secrets 齐全。"
+
+      # 版本号唯一算法：基础版本（app/build.gradle 的 VERSION_NAME_BASE）+ 提交数。
+      # 与 app/build.gradle、tools/build-pwa.js 保持一致，APK / PWA / 用户脚本三者同版本。
+      - name: 计算版本号
+        id: ver
+        run: |
+          set -euo pipefail
+          N=$(git rev-list --count HEAD)
+          BASE=$(sed -n "s/^def VERSION_NAME_BASE *= *'\([^']*\)'.*/\1/p" app/build.gradle | head -1)
+          [ -n "$BASE" ] || { echo "::error::app/build.gradle 未解析到 VERSION_NAME_BASE"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v${BASE}.${N}"
+          fi
+          echo "构建号 $N，版本 $TAG"
+          echo "build=$N"        >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"        >> "$GITHUB_OUTPUT"
+          echo "DYINDEX_BUILD_NUMBER=$N" >> "$GITHUB_ENV"
 
       - name: 安装 JDK 17
         uses: actions/setup-java@v5
@@ -128,7 +159,7 @@ jobs:
         id: pack
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${{ steps.ver.outputs.tag }}"
           OUT="douyin-index-tool-${VERSION}-release.apk"
           cp app/build/outputs/apk/release/app-release.apk "$OUT"
           sha256sum "$OUT" > "${OUT}.sha256"
@@ -140,7 +171,10 @@ jobs:
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          # 同一次推送同步创建标签，Updater 靠 tag_name 判断新版本
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
           files: |
             ${{ steps.pack.outputs.asset }}

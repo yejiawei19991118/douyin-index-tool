@@ -51,13 +51,28 @@ function buildNumber() {
   return ci && /^\d+$/.test(ci) ? ci : '0';
 }
 
-function appVersionName() {
-  const m = readUtf8(path.join(ROOT, 'app', 'build.gradle')).match(/versionName\s+"([^"]+)"/);
-  if (!m) fail('app/build.gradle 未找到 versionName');
-  return m[1];
+/*
+ * 版本号：与 app/build.gradle 使用同一算法，保证 APK / PWA / 用户脚本三者一致。
+ * 基础版本取 build.gradle 的 VERSION_NAME_BASE，追加 git 提交数；
+ * @version / SW 缓存名 / <meta dyrank-version> 全部由它派生。
+ */
+function appVersionBase() {
+  const gradle = readUtf8(path.join(ROOT, 'app', 'build.gradle'));
+  const m = gradle.match(/VERSION_NAME_BASE\s*=\s*['"]([^'"]+)['"]/);
+  if (m) return m[1];
+  // 兼容旧写法（versionName 仍是字面量）
+  const legacy = gradle.match(/versionName\s+"([^"]+)"/);
+  if (legacy) return legacy[1];
+  fail('app/build.gradle 未找到 VERSION_NAME_BASE')
 }
 
-const VERSION = appVersionName() + '.' + buildNumber();
+function fullVersion() {
+  const n = buildNumber();
+  const base = appVersionBase();
+  return n === '0' ? base : base + '.' + n;
+}
+
+const VERSION = fullVersion();
 
 function writeFile(rel, content) {
   const target = path.join(OUT_DIR, rel);

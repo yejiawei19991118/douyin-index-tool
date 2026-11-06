@@ -88,7 +88,8 @@ public class RankingActivity extends Activity {
     }
 
     private void injectCsv() {
-        if (csv == null || csv.isEmpty()) return;
+        // onDestroy 之后仍可能收到 onPageFinished 回调，webView 已置空，不能再调用。
+        if (csv == null || csv.isEmpty() || webView == null) return;
         try {
             // JSONObject.quote 生成合法 JS 字符串字面量，CSV 里的引号/换行/反斜杠均被正确转义。
             String js = "window.loadFromCsv(" + JSONObject.quote(csv)

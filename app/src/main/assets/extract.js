@@ -128,19 +128,21 @@
     if (!raw) return null;
     var s = String(raw).replace(/\s+/g, '').replace(/点击查看兴趣详情/g, '');
     var m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%TGI(\d+(?:\.\d+)?)$/);
-    if (m) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
+    if (m && m[1]) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
     m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%TGI(\d+(?:\.\d+)?)/);
-    if (m) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
+    if (m && m[1]) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
     // 手机分布等图表的 tooltip 可能没有 TGI：只有占比的形态也收（TGI 留空）。
     m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%$/);
-    if (m) return { name: m[1], ratio: m[2] + '%', tgi: '' };
+    if (m && m[1]) return { name: m[1], ratio: m[2] + '%', tgi: '' };
     return null;
   }
 
   // ---------- canvas 扫描 ----------
 
   async function scanCanvas(chart) {
-    var pts = [], seen = {};
+    // 分类名直接来自页面，可能命中 Object 原型上的键（如 constructor）；
+    // 用无原型对象做去重表，避免误判为「已收录」而静默丢行。
+    var pts = [], seen = Object.create(null);
     if (!chart || !chart.canvas || !chart.tip) return pts;
     var canvas = chart.canvas, tip = chart.tip;
     var r;
@@ -194,15 +196,24 @@
   }
 
   async function clickTab(label) {
+    // 「城市 / 城市级别 / 省份」也可能出现在其它筛选条上。优先点「地域分布」卡片内的按钮，
+    // 避免误点到别的筛选器导致维度错配；找不到归属卡片时退回第一个同名按钮（保持旧行为）。
     var btns = document.querySelectorAll('button');
+    var target = null;
     for (var i = 0; i < btns.length; i++) {
-      if ((btns[i].textContent || '').trim() === label) {
-        try { btns[i].click(); } catch (e) { return false; }
-        await sleep(1400);
-        return true;
+      if ((btns[i].textContent || '').trim() !== label) continue;
+      var cur = btns[i].parentElement;
+      for (var up = 0; cur && cur !== document.body && up < 5; up++) {
+        if ((cur.innerText || '').indexOf('地域分布') >= 0) { target = btns[i]; break; }
+        cur = cur.parentElement;
       }
+      if (target) break;
+      if (!target) target = btns[i];
     }
-    return false;
+    if (!target) return false;
+    try { target.click(); } catch (e) { return false; }
+    await sleep(1400);
+    return true;
   }
 
   async function extractRegion() {
@@ -279,7 +290,7 @@
     try { r = chart.canvas.getBoundingClientRect(); } catch (e) { r = null; }
     if (!r || r.width < 2) return { found: false, reason: 'canvas too small' };
     var y = r.top + r.height * 0.3;
-    var samples = []; var seen = {};
+    var samples = []; var seen = Object.create(null);
     for (var i = 1; i <= 30; i++) {
       var xf = i / 31;
       var x = r.left + r.width * xf;
@@ -552,7 +563,7 @@
   // 同名以「最后一次出现」的 xf 为准：最左侧 y 轴空白区会读到残留 tooltip，
   // 而残留只出现在最前，之后一定会被真实柱体覆盖，故取最后位置即可自动校正。
   async function sweepBars(chart, steps, yFrac) {
-    var order = [], idx = {};
+    var order = [], idx = Object.create(null);
     if (chartStale(chart)) return order;
     var canvas = chart.canvas, tip = chart.tip;
     var r = rectOf(canvas);
@@ -624,7 +635,7 @@
       return await scanSection(title);
     }
 
-    var out = [], seen = {}, drilled = 0;
+    var out = [], seen = Object.create(null), drilled = 0;
     for (var k = 0; k < mains.length; k++) {
       var main = mains[k];
       if (chartStale(chart)) chart = browsingChart(title);
@@ -741,7 +752,8 @@
 
   function csvEscape(s) {
     s = (s == null ? '' : String(s));
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    // 制表符与回车也必须转义：Excel/Numbers 会把裸 CR 当成换行，导致整行错位。
+    return /[",\r\n\t]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
 
   function buildCsv(sections) {
@@ -860,21 +872,24 @@
     debug.genderText = lastGenderBoxText;
     debug.browsingTabs = lastBrowsingTabs;
 
-    // 诊断 dump：把性别/手机分布区块附近的 DOM 文本和 canvas tooltip 样本全部放进 debug。
-    // 这样「诊断」按钮复制出来的快照里就包含了根因证据。
-    debug.dumps = {
-      genderBlock: dumpNearTitle('性别分布'),
-      phoneBrandBlock: dumpNearTitle('手机品牌分布'),
-      phonePriceBlock: dumpNearTitle('手机价格分布')
-    };
-    debug.probes = {
-      phoneBrandCanvas: await probeCanvasTip('手机品牌分布'),
-      phonePriceCanvas: await probeCanvasTip('手机价格分布')
-    };
+    // 诊断 dump 代价较高（多次全文档扫描 + 两个 canvas 各 30 点探测），
+    // 只有一行都没抓到、确实需要排查时才生成，正常抓取路径不再承担这份耗时。
+    var totalRows = countRows(sections);
+    if (totalRows === 0) {
+      debug.dumps = {
+        genderBlock: dumpNearTitle('性别分布'),
+        phoneBrandBlock: dumpNearTitle('手机品牌分布'),
+        phonePriceBlock: dumpNearTitle('手机价格分布')
+      };
+      debug.probes = {
+        phoneBrandCanvas: await probeCanvasTip('手机品牌分布'),
+        phonePriceCanvas: await probeCanvasTip('手机价格分布')
+      };
+    }
 
     var csv = buildCsv(sections);
     return {
-      ok: countRows(sections) > 0,
+      ok: totalRows > 0,
       pageType: page,
       keyword: name,
       generatedAt: new Date().toISOString(),
@@ -889,7 +904,7 @@
         phoneBrand: rowCount(sections['手机品牌分布']),
         phonePrice: rowCount(sections['手机价格分布'])
       },
-      rowCount: countRows(sections),
+      rowCount: totalRows,
       csv: csv
     };
   }

@@ -20,11 +20,9 @@
 | 登录态组件 | `CookieManager`、`onResume`、`onPause`、`onPageFinished` | 接受第三方 Cookie；在页面加载完成、回前台、切后台三处 `flush()` 落盘，实现免重复扫码 |
 | 导航与进度 | `WebViewClient.onPageFinished`、`onProgressChanged`、`onConsoleMessage` | 页面完成即注入脚本；加载百分比可视化；页面 JS 报错转 logcat（tag `DyIndexJS`） |
 | 状态栏组件 | `statusView`、`setStatus()` | 单行 + 省略号，汇报加载进度 / 空数据 / 抓取结果 |
-| 操作按钮组 | `runBtn`、`copyBtn`、`exportBtn`、`rankingBtn`、`debugBtn` | 开始抓取 / 复制 / 导出 CSV / **综合排名** / 诊断，五个按钮等宽排布；「综合排名」在抓取成功后自动跳转（也可手动点） |
+| 操作按钮组 | `runBtn`、`rankingBtn` | 开始抓取 / **综合排名**，两个按钮等宽；抓取成功后自动启用「综合排名」（失败则保留上一份成功结果，可点开旧数据）；CSV / xlsx 导出统一在排名页内完成，外壳层不再写系统下载目录 |
 | 注入与保活 | `injectExtractor()`、`pollReinject` | 注入 assets 脚本；每 2.5s 轮询补注入，应对 SPA 路由重置导致脚本丢失；`POSTROBOT_READY_SEED` 预热与注入检查**合并为一次 `evaluateJavascript`**（预热脚本自带幂等守卫），省掉一半跨进程调用；**仅前台轮询**（`onPause` 停止、`onResume` 恢复），切后台（如打开排名页）时停止以省电省 CPU |
-| 数据导出 | `exportCsv()`、`writeToDownloads()`、`findDownloadsFile()` | MediaStore 写入系统「下载」目录，带 UTF-8 BOM；同名文件复用 Uri 覆盖写入，不产生重复文件；文件名规则见 `CsvUtils.fileNameFor` |
-| 剪贴板组件 | `copyCsv()`、`copyDebug()` | 复制 CSV；复制抓取诊断快照 |
-| UI 样式工具 | `bg()`、`actionButton()`、`hDivider()`、`addWeighted()`、`setCopyEnabled()`、`dp()` | 圆角背景 / 主次按钮样式 / 分割线 / 等宽排布 / 禁用态置灰 / dp 换算 |
+| UI 样式工具 | `bg()`、`actionButton()`、`hDivider()`、`addWeighted()`、`dp()` | 圆角背景 / 主次按钮样式 / 分割线 / 等宽排布 / dp 换算 |
 | 资源与生命周期 | `readAsset()`、`onKeyDown`、`onDestroy` | 读取 assets；返回键回溯历史；销毁时清理 WebView |
 
 ### 原生 ↔ JS 通信桥
@@ -32,7 +30,7 @@
 | 组件 | 符号 | 职责 |
 | --- | --- | --- |
 | 进度回传 | `DyBridge.onLog(String)` | 脚本进度 → 状态栏 |
-| 结果回传 | `DyBridge.onResult(String)` | 解析 JSON → 缓存 CSV / 行数 / 页名 `pageNameCache` / 页型 `pageTypeCache`（keyword/topic/daren/video）→ 自动导出；`openRanking()` 把页名与页型一并透传给 `RankingActivity`（`EXTRA_KEYWORD` / `EXTRA_PAGE_TYPE`） |
+| 结果回传 | `DyBridge.onResult(String)` | 解析 JSON → 缓存 CSV / 行数 / 页名 `pageNameCache` / 页型 `pageTypeCache`（keyword/topic/daren/video）；**只有本次抓到数据才覆盖缓存**（失败时保留上一份成功结果，避免旧 CSV 配新页名）；完整快照仅在失败时打 logcat；`openRanking()` 把页名与页型一并透传给 `RankingActivity`（`EXTRA_KEYWORD` / `EXTRA_PAGE_TYPE`） |
 | 异常回传 | `DyBridge.onError(String)` | 脚本异常 → 状态栏 |
 
 ---
@@ -87,14 +85,14 @@
 | 兴趣下钻采集 | `browsingChart()`、`chartStale()`、`drillHost()`、`backButton()`、`clickChart()`、`sweepBars()`、`extractBrowsing()` | 「用户内容浏览分布」实为**柱状图**：单行扫 x 读出全部主标签 → 逐个点击柱体下钻（点击 y 取 0.80，落在柱体上）→ 扫子层 → 点「返回上一级」回主层；子标签名为「主标签_子标签」，输出 `时尚` / `时尚_穿搭` 平铺行 |
 | 输出 | `pageName()`、`csvEscape()`、`buildCsv()` | 按页型取页名；CSV 转义；按区块 + 维度组装 CSV（表头 `区块,分类,占比,TGI,父类`，`父类` 由下钻时的主标签显式写入，供排名侧判定二级类目，不再依赖 `_` 命名约定） |
 | 流程编排 | `scrollThrough()`、`countRows()`、`extractAll()` | 整页滚动逼出懒加载图表；统计行数；按「年龄 → 兴趣 → 性别 → 地域」顺序采集（地域放最后，避免切页签重渲染影响其它图表） |
-| 诊断快照 | `debug`（随结果回传） | 标题命中位置、图表归属、性别容器原文、兴趣下钻概况（主标签数 / 成功下钻数 / 行数），供「诊断」按钮排查 |
+| 诊断快照 | `debug`（随结果回传） | 标题命中位置、图表归属、性别容器原文、兴趣下钻概况（主标签数 / 成功下钻数 / 行数）；**仅在 0 行时**追加 DOM dump 与 canvas 探针，正常抓取路径不再做这几轮全文档扫描 |
 | 触发组件 | `window.__dyRun()`、`watch()` | 手动触发；关键词/话题页就绪后 1.5s 自动触发一次，达人/视频页只提示就绪（避免用户还在浏览时自动抓完跳走） |
 
 ---
 
 ## 五、综合排名分析页 `RankingActivity.java` + `assets/ranking.html` + `assets/scoring.js`
 
-抓取完成后自动跳入本页，把人群分析 CSV 直接灌入内置排名工具，**无需手动导出/上传**。
+抓取成功后点底部「综合排名」进入本页，把人群分析 CSV 直接灌入内置排名工具，**无需手动导出/上传**。
 
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
@@ -114,31 +112,35 @@
 
 | 组件 | 位置 | 职责 |
 | --- | --- | --- |
-| 模块构建脚本 | `app/build.gradle` | release 签名绑定、版本号、compileSdk 34 / minSdk 26 / targetSdk 34 |
+| 模块构建脚本 | `app/build.gradle` | release 签名绑定、**版本号自动派生**、compileSdk 34 / minSdk 26 / targetSdk 34 |
+| 版本号派生 | `app/build.gradle` 的 `VERSION_NAME_BASE` + `dyBuildNumber` | `versionName = 基础版本 + '.' + git 提交数`、`versionCode = 25 + 提交数`；CI 可用 `DYINDEX_BUILD_NUMBER` 覆盖（浅克隆时保证与 PWA / 用户脚本一致） |
 | 签名前置校验 | `app/build.gradle` 的 `gradle.taskGraph` 检查 | 请求 release 产物但 `keystore.properties`／字段／keystore 文件缺失时**立即失败并给出提示**，不静默产出未签名包；debug 构建不受影响 |
 | 混淆 keep 规则 | `app/proguard-rules.pro` | 保留 `@JavascriptInterface` 注解与方法、注入桥 `DyBridge` 全部成员，防日后开启混淆导致桥失效（当前 `minifyEnabled false`，规则为前置保险） |
 | 工程构建脚本 | `build.gradle`、`settings.gradle` | AGP 8.13.0、镜像仓库、模块声明 |
 | 密钥隔离 | `.gitignore` | 排除 `release.jks`、`keystore.properties`、`local.properties`、构建产物 |
 | 单元测试闸门 | `.github/workflows/release.yml`「单元测试」步骤 | `assembleRelease` 之前先跑 `./gradlew test`，测试不过直接 fail，不产出也不发布 APK |
-| 发布流水线 | `.github/workflows/release.yml` | 推送 `v*` 标签即触发：校验 Secrets → 还原签名文件 → **单元测试** → `assembleRelease` → 产物校验 → 生成带版本号资产与 SHA256 → 发布 Release |
+| 发布流水线 | `.github/workflows/release.yml` | **任何推送 main（.md 除外）即触发**，也支持推送 `v*` 标签 / 手动触发：校验 Secrets → 计算版本号 → 还原签名文件 → **单元测试** → `assembleRelease` → 产物校验 → 生成带版本号资产与 SHA256 → 以 `v<版本>` 建标签并发布 Release |
 | PWA 部署流水线 | `.github/workflows/pages.yml` | 推送 `main`（`**.md` 除外）即触发：`node tools/build-pwa.js` 转换页面 → 产物自检 → 上传 Pages 产物 → 部署 GitHub Pages；`workflow_dispatch` 可手动重发 |
 
 ### 版本发布流程
 
 ```
-改代码 → 提交并推送 → git tag vX.Y && git push origin vX.Y
+改代码 → 提交并推送 main → CI 自动构建、自动递增版本并发布 Release + 更新 PWA
 ```
 
-推送标签后由 CI 自动完成，**无需本机执行任何构建命令**：
+**无需手动改版本号、无需手动打标签、无需本机执行构建命令**。版本号由「基础版本 + git 提交数」自动派生，每次提交必然递增。
+
+推送 `main` 后由 CI 自动完成：
 
 1. 校验签名 Secrets 是否齐全（缺失即失败，不白跑构建）
-2. 由 Secrets 还原 `release.jks` 与 `keystore.properties`（仅存在于本次 runner，用完销毁）
-3. 将 Gradle 分发包从国内镜像切到官方源（境外 runner 拉取更稳）
-4. **`./gradlew test`**（另需 `node --test tools/scoring.test.js` 校验评分模块）：单元测试不全绿即中止，绝不产出/发布半成品
-5. `./gradlew assembleRelease`
-6. **产物校验**：文件存在 → `apksigner verify` 签名校验（未签名直接中止发布）→ 确认包内含 `assets/extract.js`、`assets/ranking.html`、`assets/scoring.js`
-7. 生成 `douyin-index-tool-<tag>-release.apk` 与同名 `.sha256`
-8. 发布 Release 并附带两个资产
+2. 计算版本号：`N = git rev-list --count HEAD`，`tag = v<基础版本>.<N>`，并以 `DYINDEX_BUILD_NUMBER` 传给 Gradle
+3. 由 Secrets 还原 `release.jks` 与 `keystore.properties`（仅存在于本次 runner，用完销毁）
+4. 将 Gradle 分发包从国内镜像切到官方源（境外 runner 拉取更稳）
+5. **`./gradlew test`**（另需 `node --test tools/scoring.test.js` 校验评分模块）：单元测试不全绿即中止，绝不产出/发布半成品
+6. `./gradlew assembleRelease`
+7. **产物校验**：文件存在 → `apksigner verify` 签名校验（未签名直接中止发布）→ 确认包内含 `assets/extract.js`、`assets/ranking.html`、`assets/scoring.js`
+8. 生成 `douyin-index-tool-v<版本>-release.apk` 与同名 `.sha256`
+9. 发布 Release（同一次推送内创建同名标签），App 内 `Updater` 据此提示升级
 
 ### 签名配置约定
 
@@ -177,9 +179,9 @@
 | `assets/scoring.js`（评分口径） | 原样复制，不另存副本 | PWA `scoring.js` |
 | `assets/extract.js`（抓取实现） | 原样拼接进用户脚本 | `.user.js` 的抓取逻辑 |
 | `AppUrls.java`（页面地址 / 参数） | 构建时解析 `BASE_URL`、路径常量与 `return` 表达式 → 注入 `PAGE_URLS` | 脚本「打开页面」四入口 |
-| `app/build.gradle` 的 `versionName` + 构建号 | 生成用户脚本 `@version`、SW 缓存名、页面版本标记 | 扩展自动更新、PWA 自动换缓存 |
+| `app/build.gradle` 的 `VERSION_NAME_BASE` + 构建号 | 生成用户脚本 `@version`、SW 缓存名、页面版本标记（与 APK `versionName` 完全同一算法、同一数值） | 扩展自动更新、PWA 自动换缓存 |
 
-版本与升级链路：`@version = versionName + '.' + 构建号`（构建号取 git 提交数，本地与 CI 一致且每次提交递增），每次构建都递增，扩展按 `@updateURL` 定期检查并更新；PWA 的 `CACHE_NAME` 带同一版本，新 SW `skipWaiting` + `clients.claim` 立即接管，页面回到前台时还会主动 `reg.update()`，因此下次打开即为新内容。构建脚本解析 `AppUrls.java` 失败会直接报错，杜绝两端地址悄悄分叉。
+版本与升级链路：`versionName = VERSION_NAME_BASE + '.' + 提交数`（APK、PWA、用户脚本三者同版本），每次提交必然递增：APK 由 `release.yml` 在推送 `main` 时自动构建并以同版本 `v*` 标签发布，`Updater` 比对 `tag_name` 后提示升级；用户脚本按 `@updateURL` 定期检查并更新；PWA 的 `CACHE_NAME` 带同一版本，新 SW `skipWaiting` + `clients.claim` 立即接管，页面回到前台时还会主动 `reg.update()`，因此下次打开即为新内容。构建脚本解析 `AppUrls.java` / `VERSION_NAME_BASE` 失败会直接报错，杜绝两端悄悄分叉。
 
 **本地自测**：`node tools/build-pwa.js` 后用任意静态服务器指向 `pwa-dist/`，浏览器打开即可验证导入、排名、导出；Service Worker 需要 `http://localhost` 或 https 环境才会注册。
 

@@ -564,12 +564,12 @@ public class MainActivity extends Activity {
         webView.evaluateJavascript(extractJs, null);
     }
 
-    private String keywordCache = "";
+    private volatile String keywordCache = "";
     // 页面抓到的名称，按页型各自取标识：达人页=昵称，话题页=话题名，视频页=视频标题，关键词页=关键词名。
     // 状态栏展示与综合排名页导出都用它；抓取脚本猜不到名称时回退用户输入。
-    private String pageNameCache = "";
+    private volatile String pageNameCache = "";
     // 页型（keyword/topic/daren/video）：排名页据此把「当前关键词」显示成当前话题/达人/视频。
-    private String pageTypeCache = "";
+    private volatile String pageTypeCache = "";
 
     // 打开综合排名分析页：把最近一次抓取的 CSV 直接传入，页面侧自动载入分析。
     private void openRanking() {
@@ -616,23 +616,22 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void onResult(String json) {
             try {
-                // 把完整抓取结果（含 DOM dump / canvas probe）打到 logcat，
-                // 方便 adb 直接抓根因证据。
-                android.util.Log.i("DyIndexJS", "RESULT_SNAPSHOT: " + json);
                 JSONObject o = new JSONObject(json);
                 final String csv = o.optString("csv", "");
                 final int rows = o.optInt("rowCount", 0);
                 String kw = o.optString("keyword", "");
                 // 页面识别到的名称按页型各自取标识：达人=昵称、话题=话题名、视频=视频标题、
                 // 关键词=关键词名；状态展示与综合排名页导出都以它为准，识别不到时回退用户输入。
-                // 每次都以本次结果覆盖（含空串）：避免上一次页名残留，导致状态栏与导出名字串页。
-                pageNameCache = kw;
-                pageTypeCache = o.optString("pageType", "");
+                // 只有本次确实抓到数据才覆盖缓存：失败时保留上一份成功结果，避免旧 CSV 配新页名。
                 if (csv.isEmpty() || rows == 0) {
+                    // 失败时才输出完整快照（含 DOM dump / canvas probe），正常结果不再刷大段日志。
+                    android.util.Log.i("DyIndexJS", "RESULT_SNAPSHOT: " + json);
                     setStatus("未采集到数据，请确认已登录且处于人群分析页");
                     toast("未采集到数据：请确认已登录处于人群分析页");
                     return;
                 }
+                pageNameCache = kw;
+                pageTypeCache = o.optString("pageType", "");
                 lastCsv = csv;
                 lastRowCount = rows;
                 final String displayName = pageNameCache.isEmpty() ? keywordCache : pageNameCache;
