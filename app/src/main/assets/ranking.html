@@ -2234,9 +2234,6 @@ function buildExportRecords(result) {
     list.rows.forEach(function (row) {
       out.push({
         _sheet: list.name,
-        keyword: result.keyword,
-        listName: '分区块综合排名',
-        group: list.name,
         name: row.name,
         share: formatShare(row.share),
         tgi: numText(row.tgi),
@@ -2255,9 +2252,6 @@ function buildExportRecords(result) {
     result.mixed.rows.forEach(function (row) {
       out.push({
         _sheet: '二级混合总榜',
-        keyword: result.keyword,
-        listName: '二级混合总榜',
-        group: row.parentName || '',
         name: row.name,
         share: formatShare(row.share),
         tgi: numText(row.tgi),
@@ -2276,7 +2270,9 @@ function buildExportRecords(result) {
 }
 
 function exportCells(rec) {
-  return [rec.keyword, rec.listName, rec.group, rec.name, rec.share, rec.tgi, rec.R, rec.Rstatus,
+  /* 关键词 / 榜单名称 / 分组名 不写进表格：文件名就是当前关键词，sheet 名就是榜单/分组名，
+     行内再存一遍属于重复信息。 */
+  return [rec.name, rec.share, rec.tgi, rec.R, rec.Rstatus,
     rec.S, rec.P, rec.composite, rec.rank, rec.quad, rec.interp];
 }
 
@@ -2535,7 +2531,7 @@ async function exportCSV() {
     showToast('当前关键词无有效数据，无法导出。');
     return;
   }
-  const HEADERS = ['关键词', '榜单名称', '分组名', '分类名', '原始占比', '原始TGI', 'R', 'R状态',
+  const HEADERS = ['分类名', '原始占比', '原始TGI', 'R', 'R状态',
     '规模分S（稳健标准化）', '偏好分P（稳健标准化）', '综合得分（稳健等权）', '榜单内排名', '四象限标签', '一句解读'];
   exportProgressNode(false, 0);
   if (token.gen !== state.generation || token.keyword !== state.currentKeyword) return;
