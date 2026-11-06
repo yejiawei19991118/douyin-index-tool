@@ -1,0 +1,65 @@
+name: PWA
+
+# 把排名页转换成 PWA 并发布到 GitHub Pages（iPhone Safari 添加到主屏后可全屏、离线使用）。
+# 只在影响网页产物的文件变化时触发；纯文档改动不重新部署。
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一个部署，新的推送取消排队中的旧任务
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: 构建 PWA 产物
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 转换排名页为 PWA
+        run: node tools/build-pwa.js
+
+      # 发布前自检：任一关键文件缺失或注入失效都不发布
+      - name: 产物自检
+        run: |
+          set -euo pipefail
+          for f in index.html scoring.js web-boot.js web.css manifest.webmanifest \
+                   sw.js icons/icon-192.png icons/icon-512.png icons/icon-180.png; do
+            test -s "pwa-dist/$f" || { echo "::error::缺少 pwa-dist/$f"; exit 1; }
+          done
+          grep -q 'rel="manifest"' pwa-dist/index.html || { echo "::error::index.html 未注入 manifest"; exit 1; }
+          grep -q 'src="web-boot.js"' pwa-dist/index.html || { echo "::error::index.html 未注入启动脚本"; exit 1; }
+          echo "PWA 产物自检通过"
+
+      - name: 上传 Pages 产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pwa-dist
+
+  deploy:
+    name: 部署到 GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署
+        id: deployment
+        uses: actions/deploy-pages@v4

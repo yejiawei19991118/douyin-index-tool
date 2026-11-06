@@ -1,0 +1,81 @@
+/*
+ * PWA 补充样式（仅网页版加载；Android WebView 不引用本文件）
+ * 主体样式沿用 ranking.html 内联 <style>，这里只补导入卡片与安装提示的细节。
+ */
+
+/* 页面里 .btn 的 display:inline-flex 会盖掉浏览器对 [hidden] 的默认 display:none，
+   这里补上显式规则，保证 hidden 属性真正隐藏元素 */
+#backBtn[hidden],
+#reanalyzeBtn[hidden],
+#sampleBtn[hidden] {
+  display: none;
+}
+
+/* 导入卡片复用页面已有的 .upload-card（虚线框 + 拖拽高亮） */
+.pwa-import {
+  padding: 10px 12px;
+  gap: 10px;
+}
+.pwa-import .upload-main {
+  min-width: 0;
+  flex: 1 1 200px;
+}
+.pwa-import .upload-main span {
+  line-height: 1.45;
+}
+.pwa-import .upload-actions {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pwa-import .btn {
+  min-height: 38px;
+  padding: 8px 12px;
+}
+.pwa-import .file-pill {
+  max-width: 100%;
+}
+
+/* 「添加到主屏幕」提示条 */
+.pwa-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.pwa-hint > span {
+  flex: 1;
+  min-width: 0;
+}
+.pwa-hint-close {
+  border: 0;
+  background: transparent;
+  color: #1e3a8a;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 4px;
+  min-width: 24px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 小屏：导入按钮各占一半，避免文字被挤成两行 */
+@media (max-width: 480px) {
+  .pwa-import .upload-actions {
+    flex: 1 1 100%;
+    justify-content: stretch;
+  }
+  .pwa-import .upload-actions .btn {
+    flex: 1 1 0;
+  }
+  .pwa-import .file-pill {
+    flex: 1 1 100%;
+    text-align: center;
+  }
+}

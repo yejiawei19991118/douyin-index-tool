@@ -3,6 +3,8 @@
 抖音指数「人群分析」自动抓取工具 —— 各功能组件与其在代码中的位置。
 运行时**零第三方依赖**（仅 Android 框架 API），构建期仅 AGP + Gradle wrapper。
 
+同一个仓库还派生了一个 **PWA 网页版**（由 `tools/build-pwa.js` 从 `assets/ranking.html` 转换生成，GitHub Pages 托管），供 iPhone Safari「添加到主屏幕」后离线使用；网页版不具备自动抓取能力，数据通过导入 CSV 获取（见「七、PWA 网页版」）。
+
 ---
 
 ## 一、应用外壳层 `app/src/main/java/com/lmt/dyindex/MainActivity.java`
@@ -104,7 +106,7 @@
 | 导出命名 | `state.currentKeyword` | 文件名 `抖音指数_<页名>_综合排名.xlsx` 与页面标题都取自抓取侧的页名（`pageName`）；关键词/话题页=页头主题 chip、达人页=昵称、视频页=视频标题（不使用达人抖音号）。表内不再重复写 `关键词 / 榜单名称 / 分组名` 三列（文件名与 sheet 名已表达）。原生注入时 `loadFromCsv` 标记 `meta.nativeName`，`cleanData` 直接沿用该页名、不再按文件名规则二次截断，保证一致 |
 | 排名算法 | `assets/scoring.js`（`DyScoring`）/ `buildList` / `buildKeywordResult` / `computeR` / `isSecondaryRow` | 9 步数据清洗；占比→规模分 S、TGI→偏好分 P：两维先在 log 空间做稳健标准化（中位数 0、1 IQR=1），再用有界单调映射 `100/(1+3^-z)` 转为分数（中位数 50、中间区段 1 IQR≈±25 分、值域 (0,100) 且不做硬截断）；composite = `S^wS · P^(1-wS)` 几何合成（wS=0.5）；名次区间 = wS∈{0.3,0.5,0.7} 三种权重下的最好/最差名次；四象限（HH 重点机会 / HL / LH / LL）；兴趣子类 R = 子类占比/父类占比×100（父类取抓取侧显式 `父类` 字段，回退 `_` 拆分），>100 标「超常发挥」。注意 `scoring.js` 的 `share` 入参是小数（0.09=9%），与展示口径一致 |
 | 标准区块 | `STANDARD_BLOCKS` | 地域分布-城市/城市级别/省份、年龄分布、性别分布、用户内容浏览分布、手机价格分布、手机品牌分布；缺失区块在覆盖率中如实标注 |
-| 资产独立性 | `ranking.html` | 已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行；CSV 解析统一走内联 `parseCsvText`（不依赖 PapaParse），Excel 解析在 XLSX 未加载时给出明确提示而非崩溃 |
+| 资产独立性 | `ranking.html` | 已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行；CSV 解析统一走内联 `parseCsvText`（不依赖 PapaParse），Excel 解析在 XLSX 未加载时给出明确提示而非崩溃。上传解析函数 `handleFile()` 仍保留，网页版由 `pwa-src/web-boot.js` 重新挂载导入入口后复用同一条解析链路 |
 
 ---
 
@@ -119,6 +121,7 @@
 | 密钥隔离 | `.gitignore` | 排除 `release.jks`、`keystore.properties`、`local.properties`、构建产物 |
 | 单元测试闸门 | `.github/workflows/release.yml`「单元测试」步骤 | `assembleRelease` 之前先跑 `./gradlew test`，测试不过直接 fail，不产出也不发布 APK |
 | 发布流水线 | `.github/workflows/release.yml` | 推送 `v*` 标签即触发：校验 Secrets → 还原签名文件 → **单元测试** → `assembleRelease` → 产物校验 → 生成带版本号资产与 SHA256 → 发布 Release |
+| PWA 部署流水线 | `.github/workflows/pages.yml` | 推送 `main`（`**.md` 除外）即触发：`node tools/build-pwa.js` 转换页面 → 产物自检 → 上传 Pages 产物 → 部署 GitHub Pages；`workflow_dispatch` 可手动重发 |
 
 ### 版本发布流程
 
@@ -143,3 +146,24 @@
 - CI 通过仓库 Secrets 提供签名信息：`SIGNING_KEYSTORE_BASE64`（keystore 的 base64）、`SIGNING_STORE_PASSWORD`、`SIGNING_KEY_ALIAS`、`SIGNING_KEY_PASSWORD`
 - 本地缺少签名配置时 `assembleRelease` 会直接失败并给出提示；如需本地验证签名产物，需自行从安全位置恢复这两个文件
 - 同类工程若换 keystore，务必沿用同一份密钥，否则无法覆盖升级
+
+---
+
+## 七、PWA 网页版（iPhone Safari）
+
+**定位**：同一仓库派生的网页端，只负责「导入 CSV → 综合排名 → 导出 xlsx」，**不做抓取**。浏览器既不能向 `creator.douyin.com` 注入脚本，也无法读取跨域 DOM，自动抓取只能在 Android App 内完成；网页版的导入说明已写进页面卡片，避免用户误期待。
+
+| 组件 | 位置 | 职责 |
+| --- | --- | --- |
+| 转换构建 | `tools/build-pwa.js` | 读取 `app/src/main/assets/ranking.html`，仅在 `</head>` / `</body>` 前追加 PWA 元数据与启动脚本 → 输出 `pwa-dist/`（已 gitignore）。同时复制 `assets/scoring.js`（与 App 共用同一份算法，绝不另存副本），并用 Node 内置 `zlib` 程序化生成图标（零依赖，CI 可复现） |
+| 页面 | `pwa-dist/index.html` | 与 Android 端同一份排名页，业务逻辑零改动；两端差异只有注入的标签与启动脚本，改口径只需改 `ranking.html` 一处 |
+| 应用清单 | `pwa-src/manifest.webmanifest` | `display: standalone`、`theme_color: #2563eb`、`start_url: ./`（GitHub Pages 子路径部署同样可用）、192/512 图标 |
+| 离线缓存 | `pwa-src/sw.js` | 安装即预缓存页面壳与全部静态资源；导航请求网络优先、离线回退 `index.html`；静态资源缓存优先并在后台更新；`skipWaiting` + `clients.claim` 让新版本立即接管 |
+| 启动脚本 | `pwa-src/web-boot.js` | ①隐藏原生专属入口：「返回抓取」（依赖原生桥关闭 Activity）、「重新分析」（导入后无意义）；放出「加载示例数据」；②在控制区注入「选择 CSV 文件 / 粘贴 CSV」导入卡片，文件交给页面内置 `handleFile()`，复用同一条「编码校验 → 解析 → 清洗 → 评分 → 渲染」链路；③首次访问显示「添加到主屏幕」提示，关闭后写入 localStorage；④注册 Service Worker；⑤改写首页空状态文案为导入引导 |
+| 补充样式 | `pwa-src/web.css` | 导入卡片、提示条；并为 `#backBtn[hidden]` / `#reanalyzeBtn[hidden]` / `#sampleBtn[hidden]` 补显式 `display:none`——`.btn` 的 `inline-flex` 会盖掉浏览器对 `[hidden]` 的默认样式 |
+| 图标 | 构建期生成 `icons/icon-192.png`、`icon-512.png`、`icon-180.png` | PNG 编码手写（IHDR/IDAT/IEND + CRC32），无需 canvas 或三方库；manifest 用透明圆角版，apple-touch-icon 用满幅方形交由 iOS 自行切圆角 |
+| 部署 | `.github/workflows/pages.yml` | 推送 `main` 自动转换并发布到 GitHub Pages，产物自检（关键文件 + 注入标记）不通过即失败；见「六、构建与交付链」 |
+| 使用方式（iPhone） | Safari 打开线上地址 → 分享 → 添加到主屏幕 | 全屏无地址栏运行；首次联网后资源进缓存，断网仍可导入分析；数据只在本机处理 |
+| 与 App 的边界 | — | 数据来源：安卓 App 抓取后导出的 CSV（AirDrop / iCloud / 微信传文件到 iPhone），或复制到剪贴板后用「粘贴 CSV」；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录） |
+
+**本地自测**：`node tools/build-pwa.js` 后用任意静态服务器指向 `pwa-dist/`，浏览器打开即可验证导入、排名、导出；Service Worker 需要 `http://localhost` 或 https 环境才会注册。

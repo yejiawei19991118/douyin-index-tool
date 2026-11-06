@@ -18,6 +18,9 @@ app/build/
 captures/
 .cxx/
 
+# PWA 产物：由 tools/build-pwa.js 生成、GitHub Pages 工作流发布，不入库
+pwa-dist/
+
 # ===== IDE =====
 .idea/
 *.iml
