@@ -59,7 +59,6 @@ public final class LicenseManager {
     private static final String[] MANIFEST_SOURCES = {
             "https://api.github.com/repos/yejiawei19991118/lmt-cards/contents/cards.json",
             "https://gh-proxy.com/https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/main/cards.json",
-            "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json",
             "https://testingcf.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json",
             "https://cdn.jsdmirror.com/gh/yejiawei19991118/lmt-cards@main/cards.json",
             "https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/main/cards.json"

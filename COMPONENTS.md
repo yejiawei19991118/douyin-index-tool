@@ -306,7 +306,7 @@ https://yejiawei19991118.github.io/douyin-index-tool/douyin-index-extract.user.j
 | 激活闸门 | `MainActivity.onCreate` | 未激活 / 激活失效时跳 `ActivationActivity` 并 `finish()`；通过后 `refreshIfStaleAsync()` 后台刷新清单 |
 | 机器码 | `LicenseManager.machineCode(ctx)` / `machineCodeRaw(ctx)` | 展示/复制用 `XXXX-XXXX-XXXX-XXXX`；与清单 `cards[].mc` 比对必须用**无分隔符的 16 位原始值**（清单里的 mc 带 `-`，两侧统一 `normalize()` 后比较）。派生：`ANDROID_ID`（缺失退回 `MODEL\|DEVICE`）+ 固定盐 `\|dyindex` → SHA-256 → 自定义 base32 取 16 字符；重装 / 清数据 / 系统升级 / 换语言都不变 |
 | 卡密格式 | `normalize()`、`cardFormatOk()` | 去分隔符并转大写；20 位 `[0-9A-Z]` |
-| 清单拉取 | `fetchAndVerify()`、`MANIFEST_SOURCES` | 逐源尝试：GitHub contents API（`Accept: application/vnd.github.raw`，内容最新）→ gh-proxy → jsDelivr 三镜像（约 12h 缓存，兜底）→ raw.githubusercontent.com（国内常年不可达，最后兜底）；单源 5s 连接 / 8s 读取、整体 25s 预算；首个验签通过者生效并写缓存 |
+| 清单拉取 | `fetchAndVerify()`、`MANIFEST_SOURCES` | 逐源尝试：GitHub contents API（`Accept: application/vnd.github.raw`，内容最新）→ gh-proxy → jsDelivr（testingcf）/ jsdmirror 镜像（约 12h 缓存，兜底）→ raw.githubusercontent.com（国内常年不可达，最后兜底）；单源 5s 连接 / 8s 读取、整体 25s 预算；首个验签通过者生效并写缓存 |
 | 清单验签 | `parseManifest()`、`canonicalManifestString()`、`Ed25519` | 只认 `ver=2`；规范化串 = `ver\nupdated\nrev\n<卡片行>\n<吊销列表>`（卡片行按 `mc + \0 + card` 排序，内容 `card\|mc\|note\|exp`）；内置公钥（base32 52 字符）做 RFC 8032 Ed25519 验签，失败一律不采纳 |
 | 授权判定 | `decide()` | 顺序：已吊销 → 不在清单 → 一卡一机不匹配 → 已过期（`YYYY-MM-DD` 早于今天）→ 离线凭证超 14 天 |
 | 离线凭证 | `KEY_CACHE`、`credFresh()`、`saveCache()` | 验签通过的清单 + 拉取时间缓存本地；超过 14 天必须联网刷新；系统时间回拨按过期处理 |
