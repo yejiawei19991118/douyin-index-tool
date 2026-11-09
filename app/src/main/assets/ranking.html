@@ -511,11 +511,11 @@ function papaRun(text, useWorker) {
 
 async function parseCsv(text) {
   // 内联解析器（与原生注入路径 parseCsvText 一致），不依赖 PapaParse CDN。
-  const parsed = parseCsvText(text);
-  if (!parsed || !parsed.rows || parsed.rows.length === 0) {
+  const rows = parseCsvText(text);
+  if (!rows || rows.length === 0) {
     throw err('CSV_PARSE', 'CSV 解析失败：未获得有效数据。');
   }
-  return parsed.rows;
+  return rows;
 }
 
 async function parseExcel(buffer) {
