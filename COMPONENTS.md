@@ -274,7 +274,7 @@
 | `AppUrls.java`（页面地址 / 参数） | 构建时解析 `BASE_URL`、路径常量与 `return` 表达式 → 注入 `PAGE_URLS` | 脚本「打开页面」四入口 |
 | `app/build.gradle` 的 `VERSION_NAME_BASE` + 构建号 | 生成用户脚本 `@version`、SW 缓存名、页面版本标记（与 APK `versionName` 完全同一算法、同一数值） | 扩展自动更新、PWA 自动换缓存 |
 
-版本与升级链路：`versionName = VERSION_NAME_BASE + '.' + 提交数`（APK、PWA、用户脚本三者同版本），每次提交必然递增：APK 由 `release.yml` 在推送 `main` 时自动构建并以同版本 `v*` 标签发布，Release 正文即触发提交的完整信息，`Updater` 比对 `tag_name` 后提示升级，装完首次打开再弹「更新内容」；用户脚本按 `@updateURL` 定期检查并更新；PWA 的 `CACHE_NAME` 带同一版本，新 SW `skipWaiting` + `clients.claim` 立即接管，页面回到前台时还会主动 `reg.update()`，因此下次打开即为新内容。构建脚本解析 `AppUrls.java` / `VERSION_NAME_BASE` 失败会直接报错，杜绝两端悄悄分叉。
+版本与升级链路：`versionName = VERSION_NAME_BASE + '.' + 提交数`（APK、PWA、用户脚本三者同版本），每次提交必然递增：APK 由 `release.yml` 在推送 `main` 时自动构建并以同版本 `v*` 标签发布，Release 正文即触发提交的完整信息，`Updater` 比对 `tag_name` 后提示升级，装完首次打开再弹「更新内容」；**激活页与主界面都会做后台静默检查更新**，未激活的用户也能拿到修复包；用户脚本按 `@updateURL` 定期检查并更新；PWA 的 `CACHE_NAME` 带同一版本，新 SW `skipWaiting` + `clients.claim` 立即接管，页面回到前台时还会主动 `reg.update()`，因此下次打开即为新内容。构建脚本解析 `AppUrls.java` / `VERSION_NAME_BASE` 失败会直接报错，杜绝两端悄悄分叉。
 
 **本地自测**：`node tools/build-pwa.js` 后用任意静态服务器指向 `pwa-dist/`，浏览器打开即可验证导入、排名、导出；Service Worker 需要 `http://localhost` 或 https 环境才会注册。
 
