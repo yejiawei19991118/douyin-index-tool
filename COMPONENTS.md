@@ -203,7 +203,7 @@
 | 密钥隔离 | `.gitignore` | 排除 `release.jks`、`keystore.properties`、`local.properties`、构建产物、`pwa-dist/` |
 | Java 单元测试闸门 | `.github/workflows/release.yml`「单元测试」步骤 | `assembleRelease` 之前先跑 `./gradlew test`，测试不过直接 fail，不产出也不发布 APK |
 | 评分模块单测 | `tools/scoring.test.js` | Node 内置 `node:test`（零依赖，直接 `require` 资产里的 `scoring.js`，靠其 UMD 包装的 CommonJS 分支导出），覆盖：头部不同分不饱和、0% 占比+高 TGI 沉底、名次区间单调且为 1..n 排列、宽分布下分值严格可区分且恒正、单维相同记 50 分并标 `flat`、n=1 返回 NaN、结果可复现、综合分与名次单调一致、负数/非法输入不产生 NaN。本地与 `pages.yml` 都会执行（`node --test tools/scoring.test.js`） |
-| Release 发布 | `.github/workflows/release.yml` | **任何推送 main（.md 除外）即触发**，也支持推送 `v*` 标签 / 手动触发：校验 Secrets → 计算版本号 → **标签占用检查**（同一提交重复触发时版本号不变，直接发布会把新 APK 挂到旧 Release）→ 还原签名文件 → 切 Gradle 官方源 → **单元测试** → `assembleRelease` → 产物校验（存在性 / `apksigner verify` / 包内含 `assets/extract.js`）→ 生成带版本号资产与 SHA256 → 以 `v<版本>` 建标签并发布 Release |
+| Release 发布 | `.github/workflows/release.yml` | **任何推送 main（.md 除外）即触发**，也支持推送 `v*` 标签 / 手动触发：校验 Secrets → 计算版本号 → **标签占用检查**（同一提交重复触发时版本号不变，直接发布会把新 APK 挂到旧 Release）→ 还原签名文件 → 切 Gradle 官方源 → **单元测试** → `assembleRelease` → 产物校验（存在性 / `apksigner verify` / 包内含 `assets/extract.js`）→ 生成带版本号资产与 SHA256 → **生成 Release 说明**（`git log -1 --pretty=%B` 取触发提交的完整信息，含多行正文）→ 以 `v<版本>` 建标签、用该说明作 `body` 发布 Release |
 | PWA 构建脚本 | `tools/build-pwa.js` | 版本派生（`buildNumber()` / `appVersionBase()` / `fullVersion()`，与 Gradle 同算法）；`buildIndexHtml()` 只追加 head 元数据与 `web-boot.js`；`readPageUrlTemplates()` 从 `AppUrls.java` 正则解析四条 URL 模板；`buildUserscript()` 拼装头部与 `userscript-controller.js + extract.js`；纯 Node 生成三档 PNG 图标（块 CRC 覆盖「类型 + 数据」，符合 PNG 规范）；输出文件清单与总大小 |
 | PWA 部署流水线 | `.github/workflows/pages.yml` | 推送 `main`（`**.md` 除外）即触发：`node tools/build-pwa.js` → **语法检查 + 评分单测**（`node --check` 四个脚本、`node --test tools/scoring.test.js`）→ **产物自检** → 上传 Pages 产物 → 部署 GitHub Pages；`workflow_dispatch` 可手动重发 |
 | PWA 产物自检 | `.github/workflows/pages.yml`「产物自检」步骤 | 10 个关键文件非空；三档图标必须被 `file` 识别为对应尺寸的 PNG（防止 CRC/编码错误悄悄发布）；`index.html` 含 `rel="manifest"` 与 `src="web-boot.js"`；用户脚本含 `@match creator.douyin.com`、`window.__dyRun`、`@version`；`sw.js` 缓存名已注入 `dyrank-pwa-<版本>`；页面含 `name="dyrank-version"`；任一不满足即不发布 |
@@ -212,6 +212,7 @@
 
 ```
 改代码 → 提交并推送 main → CI 自动构建、自动递增版本并发布 Release + 更新 PWA
+       → Release 正文 = 本次提交信息 → APK 升级后首次打开弹「更新内容」
 ```
 
 **无需手动改版本号、无需手动打标签、无需本机执行构建命令**。版本号由「基础版本 + git 提交数」自动派生，每次提交必然递增。
@@ -273,7 +274,7 @@
 | `AppUrls.java`（页面地址 / 参数） | 构建时解析 `BASE_URL`、路径常量与 `return` 表达式 → 注入 `PAGE_URLS` | 脚本「打开页面」四入口 |
 | `app/build.gradle` 的 `VERSION_NAME_BASE` + 构建号 | 生成用户脚本 `@version`、SW 缓存名、页面版本标记（与 APK `versionName` 完全同一算法、同一数值） | 扩展自动更新、PWA 自动换缓存 |
 
-版本与升级链路：`versionName = VERSION_NAME_BASE + '.' + 提交数`（APK、PWA、用户脚本三者同版本），每次提交必然递增：APK 由 `release.yml` 在推送 `main` 时自动构建并以同版本 `v*` 标签发布，`Updater` 比对 `tag_name` 后提示升级；用户脚本按 `@updateURL` 定期检查并更新；PWA 的 `CACHE_NAME` 带同一版本，新 SW `skipWaiting` + `clients.claim` 立即接管，页面回到前台时还会主动 `reg.update()`，因此下次打开即为新内容。构建脚本解析 `AppUrls.java` / `VERSION_NAME_BASE` 失败会直接报错，杜绝两端悄悄分叉。
+版本与升级链路：`versionName = VERSION_NAME_BASE + '.' + 提交数`（APK、PWA、用户脚本三者同版本），每次提交必然递增：APK 由 `release.yml` 在推送 `main` 时自动构建并以同版本 `v*` 标签发布，Release 正文即触发提交的完整信息，`Updater` 比对 `tag_name` 后提示升级，装完首次打开再弹「更新内容」；用户脚本按 `@updateURL` 定期检查并更新；PWA 的 `CACHE_NAME` 带同一版本，新 SW `skipWaiting` + `clients.claim` 立即接管，页面回到前台时还会主动 `reg.update()`，因此下次打开即为新内容。构建脚本解析 `AppUrls.java` / `VERSION_NAME_BASE` 失败会直接报错，杜绝两端悄悄分叉。
 
 **本地自测**：`node tools/build-pwa.js` 后用任意静态服务器指向 `pwa-dist/`，浏览器打开即可验证导入、排名、导出；Service Worker 需要 `http://localhost` 或 https 环境才会注册。
 
