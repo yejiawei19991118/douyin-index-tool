@@ -155,16 +155,6 @@ public class ActivationActivity extends Activity {
         stLp.topMargin = dp(12);
         root.addView(statusView, stLp);
 
-        TextView foot = new TextView(this);
-        foot.setText("激活需要联网校验卡密清单；激活后 14 天内可离线使用，之后需联网刷新一次。");
-        foot.setTextSize(12);
-        foot.setTextColor(0xFF9AA4B2);
-        foot.setLineSpacing(0, 1.4f);
-        LinearLayout.LayoutParams footLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        footLp.topMargin = dp(26);
-        root.addView(foot, footLp);
-
         activateBtn.setOnClickListener(new android.view.View.OnClickListener() {
             @Override
             public void onClick(android.view.View v) {
