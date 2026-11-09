@@ -671,6 +671,8 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().flush();
         // 上一次更新下载若已结束（进程曾被杀导致完成广播丢失），这里补上安装。
         Updater.resumePendingInstall(this);
+        // 刚升级完首次打开时展示本次更新内容（文案取自发布时的提交信息），同一版本只弹一次。
+        Updater.maybeShowChangelog(this);
         // 每次重新打开/回到前台都静默检查更新：有新版即后台下载并调起安装器。
         Updater.checkAndPrompt(this, false);
         // 仅在前台轮询注入脚本与预热 seed，切后台（如打开排名页）时停止以省电省 CPU。

@@ -40,7 +40,7 @@
 | 操作按钮组 | `runBtn`、`rankingBtn` | 开始抓取 / **综合排名**，两个按钮等宽；抓取成功后自动启用「综合排名」（失败则保留上一份成功结果，可点开旧数据）；CSV / xlsx 导出统一在排名页内完成，外壳层不再写系统下载目录 |
 | 页面跳转与提示 | `openRanking()`、`toast()`、`onEditorAction` | `openRanking` 把缓存的 CSV 通过 `RankingActivity.stageCsv()` 同进程静态暂存交接（CSV 动辄数百 KB，走 Intent extra 会撞 Binder 约 1MB 上限），Intent 只带页名 / 页型（无成功数据时提示先抓取）；`toast` 统一切主线程短提示；`onEditorAction` 处理输入法「搜索 / 完成」键，等价于点「打开」 |
 | 注入与保活 | `injectExtractor()`、`pollReinject` | 注入 assets 脚本；每 2.5s 轮询补注入，应对 SPA 路由重置导致脚本丢失；`POSTROBOT_READY_SEED` 预热与注入检查**合并为一次 `evaluateJavascript`**（预热脚本自带幂等守卫），省掉一半跨进程调用；**仅前台轮询**（`onPause` 停止、`onResume` 恢复），切后台（如打开排名页）时停止以省电省 CPU |
-| 前后台调度 | `onResume` / `onPause` | 回前台：Cookie 落盘 → `Updater.resumePendingInstall()` 补装 → `Updater.checkAndPrompt(..., false)` 静默查更新 → 重启注入轮询；切后台：Cookie 落盘，停止轮询并移除加载超时 / 卡死看门狗（后台 evaluateJavascript 与 reload 只会白耗电） |
+| 前后台调度 | `onResume` / `onPause` | 回前台：Cookie 落盘 → `Updater.resumePendingInstall()` 补装 → `Updater.maybeShowChangelog()` 弹「更新内容」（刚升级完首次打开，同一版本仅一次）→ `Updater.checkAndPrompt(..., false)` 静默查更新 → 重启注入轮询；切后台：Cookie 落盘，停止轮询并移除加载超时 / 卡死看门狗（后台 evaluateJavascript 与 reload 只会白耗电） |
 | 抓取结果缓存 | `lastCsv`、`lastRowCount`、`pageNameCache`、`pageTypeCache`、`keywordCache`（均 `volatile`）、`destroyed` | 供「综合排名」与导出使用；`pageNameCache` 存抓取侧识别出的页名（达人昵称 / 话题名 / 视频标题），`pageTypeCache` 存 keyword/topic/daren/video，`keywordCache` 为输入兜底；`destroyed` 在 `onDestroy` 先置位，`onPageStarted` / `onPageFinished` 据此直接返回，避免销毁过程中再投递超时与看门狗任务 |
 | UI 样式工具 | `bg()`、`actionButton()`、`hDivider()`、`addWeighted()`、`dp()` | 圆角背景 / 主次按钮样式 / 分割线 / 等宽排布 / dp 换算 |
 | 资源与生命周期 | `readAsset()`、`onKeyDown`、`onDestroy` | 读取 assets；返回键回溯历史；销毁时先置 `destroyed`（后续 WebView 回调直接返回）、`Updater.stopWatch()` 摘掉下载监听，再移除全部 Handler 回调，`about:blank` → `stopLoading` → 摘除 `DyBridge` → `removeAllViews` → `destroy()`，避免 WebView 与静态接收器泄漏 |
@@ -80,7 +80,7 @@
 
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
-| 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 每次重新打开/回到前台都静默查（仅 60s 进程内冷却、失败静默）、`manual=true` 用户点「更新」（无视冷却并回提示）；发现新版即后台下载并调起系统安装器（同版本已有下载在途时跳过）；私有仓库 404 给可读提示而非崩溃 |
+| 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 每次重新打开/回到前台都静默查（仅 60s 进程内冷却、失败静默）、`manual=true` 用户点「更新」（无视冷却并回提示）；发现新版即后台下载并调起系统安装器（同版本已有下载在途时跳过）；**并把该版本的 `body`（发布时的提交信息）写入 `KEY_NOTES_VERSION` / `KEY_NOTES_BODY`，供装完首次打开离线弹窗**；私有仓库 404 给可读提示而非崩溃 |
 | 检查节流与并发 | `AUTO_COOLDOWN_MS`（60s）、`sLastAutoCheckAt`、`sChecking`（`AtomicBoolean`） | 自动检查冷却；`compareAndSet` 保证同一时刻只有一次检查线程，手动重复点击提示「正在检查更新」 |
 | Release 解析 | `fetchLatest()`、`parseRelease(String)`、`Release`、`downloadable()`、`currentVersionName(context)` | `currentVersionName` 读 `PackageInfo.versionName`（空/异常返回空串）作为比较基准；取 `tag_name` 规整后与当前 `versionName` 比较；从 `assets` 挑 `.apk`（优先带 `release` 字样）与 `.apk.sha256`；`downloadable()` 判断是否找齐可下载项 |
 | 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置，但仍继续下载）；下载到应用私有 `updates/` 目录（`dyindex-update-<版本>.apk`）；下载前 `cleanUpdatesDir(app, 待装文件名)` 清理遗留安装包（保留待安装的那一份）；把下载 id / 文件名 / sha 地址写入 `SharedPreferences` 以供接续 |
@@ -95,6 +95,7 @@
 | 安装器调用 | `installApk(context, file)` | 用 `ApkFileProvider` 的 content:// URI + `APK_MIME` + `FLAG_GRANT_READ_URI_PERMISSION` 调 `ACTION_VIEW`；失败提示安装包路径 |
 | 安装包共享 | `ApkFileProvider`（authority `${applicationId}.apk`，路径 `updates/`） | 自建极简 ContentProvider：`onCreate()` 直接返回 true（无初始化副作用）；`buildUri()` 拼 `content://<authority>/updates/<文件名>`；`updatesDir()` 取应用私有外部目录、不可用时退回内部私有目录；`openFile` 仅允许只读访问 `updates/<单层文件名>`（拒绝写模式、`/`、`\`、`..`），`getType` 固定 APK MIME；`query/insert/delete/update` 均为空实现（非协商接口） |
 | 断点接续 | `Updater.resumePendingInstall()` + `SharedPreferences` | 进程若在下载期间被回收，onResume 依据持久化的下载 id 接续校验与安装；已终结则直接处理，否则重新挂广播 |
+| 更新内容弹窗 | `maybeShowChangelog()`、`showChangelog()`、`fetchReleaseBody()`、`wasUpgraded()`、`KEY_LAST_RUN_VERSION` | `MainActivity.onResume` 调用；当前 `versionName` 与 `last_run_version` 不同即视为刚升级（先落盘再弹，避免重复）：优先用升级前缓存的同版本说明**离线直接弹**，缓存缺失时后台请求 `releases/tags/v<当前版本>` 取 `body` 兜底（8s 超时、需 UA、失败静默）并回写缓存；`wasUpgraded()` 用 `lastUpdateTime`/`firstInstallTime` 区分覆盖安装与全新安装（全新安装不打扰）；弹窗标题「更新内容 v<版本>」，正文超 4000 字符截断提示看 Releases，显示前判 `isFinishing()`/`isDestroyed()` |
 | 工具 | `sha256Of(File)`、`toast(Context, msg)` | 8KB 分块计算 SHA-256（小写 hex，失败返回空串）；所有 Toast 经主线程 Handler 投递 |
 | 清单声明 | `AndroidManifest.xml` | `REQUEST_INSTALL_PACKAGES` 权限 + `<provider>` 声明 |
 
@@ -225,7 +226,8 @@
 6. `./gradlew assembleRelease`
 7. **产物校验**：文件存在 → `apksigner verify --print-certs` 退出码判定（未签名/签名无效直接中止）→ 确认包内含 `assets/extract.js`（其余 assets 随打包天然包含）
 8. 生成 `douyin-index-tool-v<版本>-release.apk` 与同名 `.sha256`
-9. 发布 Release（同一次推送内创建同名标签，`target_commitish` 指向本次提交），App 内 `Updater` 据此提示升级
+9. `git log -1 --pretty=%B > release-notes.md`：Release 正文直接取**触发本次构建的提交信息（含多行正文）**，APK 升级后首次打开的「更新内容」弹窗即展示它，无需人工补文案
+10. 发布 Release（同一次推送内创建同名标签，`target_commitish` 指向本次提交，`body_path` 用上一步的提交信息），App 内 `Updater` 据此提示升级
 
 ### 签名配置约定
 

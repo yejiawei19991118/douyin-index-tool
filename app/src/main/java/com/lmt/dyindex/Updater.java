@@ -57,6 +57,10 @@ public final class Updater {
     private static final String LATEST_API =
             "https://api.github.com/repos/" + REPO + "/releases/latest";
 
+    /** 指定标签的 Release API：缓存缺失时按当前版本号兜底拉取更新说明。 */
+    private static final String TAG_API =
+            "https://api.github.com/repos/" + REPO + "/releases/tags/";
+
     /** 手动更新失败时的兜底入口（浏览器打开 Releases 页）。 */
     private static final String RELEASES_PAGE =
             "https://github.com/" + REPO + "/releases/latest";
@@ -75,6 +79,14 @@ public final class Updater {
     private static final String KEY_PENDING_ID = "pending_download_id";
     private static final String KEY_PENDING_NAME = "pending_file_name";
     private static final String KEY_PENDING_SHA_URL = "pending_sha_url";
+    /** 上次运行时的版本号：与当前版本不同即视为刚完成一次升级，可据此弹「更新内容」。 */
+    private static final String KEY_LAST_RUN_VERSION = "last_run_version";
+    /** 升级前缓存的更新说明（key 为对应版本号），安装完首次打开时离线可读。 */
+    private static final String KEY_NOTES_VERSION = "notes_version";
+    private static final String KEY_NOTES_BODY = "notes_body";
+
+    /** 弹窗正文上限：Release 正文可能很长，超出截断，避免系统弹窗渲染过慢。 */
+    private static final int NOTES_MAX_CHARS = 4000;
 
     /** 下载记录已不存在（被系统清理）时的状态值。 */
     private static final int STATUS_UNKNOWN = -1;
@@ -158,6 +170,12 @@ public final class Updater {
                         if (manual) toast(app, "已是最新版本 " + currentName);
                         return;
                     }
+                    // 记下本次新版本的更新说明：装完首次打开时直接离线展示，不必再联网。
+                    if (!r.notes.trim().isEmpty()) {
+                        sp.edit().putString(KEY_NOTES_VERSION, r.version)
+                                .putString(KEY_NOTES_BODY, r.notes)
+                                .apply();
+                    }
                     // 已有下载在途：交给 onResume 里的 resumePendingInstall 接续，不重复发起。
                     if (sp.getLong(KEY_PENDING_ID, -1L) >= 0) {
                         if (manual) toast(app, "安装包正在下载，完成后会自动调起安装");
@@ -196,6 +214,101 @@ public final class Updater {
         final String shaUrl = sp.getString(KEY_PENDING_SHA_URL, "");
         if (handleIfFinished(activity, id, fileName, shaUrl)) return;
         watchDownload(activity, id, fileName, shaUrl);
+    }
+
+    /**
+     * 升级后首次打开时弹出「更新内容」。
+     *
+     * 文案来源优先级：升级前检查更新时缓存的本次版本说明（离线可用）→ 按当前版本号实时拉取
+     * 对应 Release 的正文（兜底）→ 都没有则静默跳过。同一版本只弹一次。
+     */
+    public static void maybeShowChangelog(final Activity activity) {
+        if (activity == null) return;
+        final Context app = activity.getApplicationContext();
+        final SharedPreferences sp = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        final String current = currentVersionName(app);
+        if (current.isEmpty()) return;
+        final String last = sp.getString(KEY_LAST_RUN_VERSION, "");
+        if (current.equals(last)) return;
+        // 先落盘再弹窗：onResume 可能连续触发，避免同一版本重复弹。
+        sp.edit().putString(KEY_LAST_RUN_VERSION, current).apply();
+        // 没有历史记录（全新安装）时不打扰；覆盖安装上来的老用户仍补看一次。
+        if (last.isEmpty() && !wasUpgraded(app)) return;
+
+        final String cachedVersion = sp.getString(KEY_NOTES_VERSION, "");
+        final String cachedBody = sp.getString(KEY_NOTES_BODY, "");
+        if (current.equals(cachedVersion) && !cachedBody.trim().isEmpty()) {
+            showChangelog(activity, current, cachedBody);
+            return;
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final String body = fetchReleaseBody(current);
+                if (body.trim().isEmpty()) return;
+                sp.edit().putString(KEY_NOTES_VERSION, current)
+                        .putString(KEY_NOTES_BODY, body)
+                        .apply();
+                activity.runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        showChangelog(activity, current, body);
+                    }
+                });
+            }
+        }, "dyindex-changelog").start();
+    }
+
+    /** 是否由旧版本覆盖安装而来（据此区分「升级」与「首次安装」）。 */
+    private static boolean wasUpgraded(Context app) {
+        try {
+            PackageInfo pi = app.getPackageManager().getPackageInfo(app.getPackageName(), 0);
+            return pi.lastUpdateTime > pi.firstInstallTime + 1000L;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 按版本号拉取对应 Release 的正文（tag 形如 v1.2.3）；失败返回空串。 */
+    private static String fetchReleaseBody(String version) {
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(TAG_API + "v" + version).openConnection();
+            conn.setConnectTimeout(TIMEOUT_MS);
+            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("User-Agent", "dyindex-android");
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            if (conn.getResponseCode() != 200) return "";
+            InputStream in = conn.getInputStream();
+            try {
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+                return new JSONObject(bos.toString("UTF-8")).optString("body", "");
+            } finally {
+                in.close();
+            }
+        } catch (Throwable t) {
+            return "";
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static void showChangelog(final Activity activity, String version, String notes) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        String text = notes == null ? "" : notes.trim();
+        if (text.isEmpty()) return;
+        if (text.length() > NOTES_MAX_CHARS) {
+            text = text.substring(0, NOTES_MAX_CHARS) + "\n\n…（内容过长已截断，完整说明见 GitHub Releases）";
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle("更新内容 v" + version)
+                .setMessage(text)
+                .setPositiveButton("知道了", null)
+                .show();
     }
 
     // ===== 检查 =====

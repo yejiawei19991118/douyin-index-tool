@@ -184,6 +184,20 @@ jobs:
           echo "asset=$OUT"                >> "$GITHUB_OUTPUT"
           echo "sha_file=${OUT}.sha256"    >> "$GITHUB_OUTPUT"
 
+      # Release 正文直接取触发本次构建的提交信息（含多行正文）。
+      # APK 升级后首次打开会把它当作「更新内容」弹窗展示，所以只要提交信息写清改动即可，无需人工补文案。
+      - name: 生成 Release 说明（取自提交信息）
+        run: |
+          set -euo pipefail
+          git log -1 --pretty=%B > release-notes.md
+          if [ -s release-notes.md ]; then
+            echo "Release 说明（提交信息）："
+            cat release-notes.md
+          else
+            echo "::warning::提交信息为空，本次 Release 说明将为空（APK 不会弹更新内容）"
+          fi
+          { echo "### Release 说明（提交信息）"; echo; cat release-notes.md; } >> "$GITHUB_STEP_SUMMARY"
+
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
@@ -191,7 +205,7 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          generate_release_notes: true
+          body_path: release-notes.md
           files: |
             ${{ steps.pack.outputs.asset }}
             ${{ steps.pack.outputs.sha_file }}
