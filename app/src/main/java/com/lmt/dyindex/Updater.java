@@ -79,6 +79,9 @@ public final class Updater {
     private static final String KEY_PENDING_ID = "pending_download_id";
     private static final String KEY_PENDING_NAME = "pending_file_name";
     private static final String KEY_PENDING_SHA_URL = "pending_sha_url";
+    /** 已调起安装器、但用户还没确认的那个包（含当时版本号），下一次清理时不能删。 */
+    private static final String KEY_INSTALLING_NAME = "installing_file_name";
+    private static final String KEY_INSTALLING_VERSION = "installing_version";
     /** 上次运行时的版本号：与当前版本不同即视为刚完成一次升级，可据此弹「更新内容」。 */
     private static final String KEY_LAST_RUN_VERSION = "last_run_version";
     /** 升级前缓存的更新说明（key 为对应版本号），安装完首次打开时离线可读。 */
@@ -104,6 +107,9 @@ public final class Updater {
 
     /** 下载完成广播接收器（仅在下载期间注册）。 */
     private static BroadcastReceiver sReceiver;
+
+    /** 主线程 Handler：toast 等回调复用同一个，避免每次新建。 */
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private Updater() {
     }
@@ -177,10 +183,13 @@ public final class Updater {
                                 .apply();
                     }
                     // 已有下载在途：交给 onResume 里的 resumePendingInstall 接续，不重复发起。
-                    if (sp.getLong(KEY_PENDING_ID, -1L) >= 0) {
+                    if (sp.getLong(KEY_PENDING_ID, -1L) >= 0
+                            && !sp.getString(KEY_PENDING_NAME, "").isEmpty()) {
                         if (manual) toast(app, "安装包正在下载，完成后会自动调起安装");
                         return;
                     }
+                    // 记录残缺（有 id 没文件名）时清掉，否则会永久停留在「下载在途」状态。
+                    if (sp.getLong(KEY_PENDING_ID, -1L) >= 0) clearPending(app);
                     if (!r.downloadable()) {
                         if (manual) toast(app, "发现新版本 " + r.version + "，但未找到可下载的安装包");
                         return;
@@ -210,7 +219,11 @@ public final class Updater {
         final SharedPreferences sp = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         final long id = sp.getLong(KEY_PENDING_ID, -1L);
         final String fileName = sp.getString(KEY_PENDING_NAME, "");
-        if (id < 0 || fileName == null || fileName.isEmpty()) return;
+        if (id < 0) return;
+        if (fileName == null || fileName.isEmpty()) {
+            clearPending(app);
+            return;
+        }
         final String shaUrl = sp.getString(KEY_PENDING_SHA_URL, "");
         if (handleIfFinished(activity, id, fileName, shaUrl)) return;
         watchDownload(activity, id, fileName, shaUrl);
@@ -413,10 +426,16 @@ public final class Updater {
             req.setNotificationVisibility(
                     DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             req.setDestinationInExternalFilesDir(app, null, ApkFileProvider.PATH + "/" + fileName);
-            // 安装器读完文件前不能删，所以统一在下一次下载前清理遗留安装包，避免长期堆积
-            String pendingName = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getString(KEY_PENDING_NAME, "");
-            cleanUpdatesDir(app, pendingName);
+            // 安装器读完文件前不能删，所以统一在下一次下载前清理遗留安装包，避免长期堆积。
+            // 待下载的那一份、以及已调起安装器但用户还没确认的那一份都必须保留。
+            SharedPreferences sp = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String installing = "";
+            String installingVersion = sp.getString(KEY_INSTALLING_VERSION, "");
+            String currentVersion = currentVersionName(app);
+            if (!currentVersion.isEmpty() && currentVersion.equals(installingVersion)) {
+                installing = sp.getString(KEY_INSTALLING_NAME, "");
+            }
+            cleanUpdatesDir(app, sp.getString(KEY_PENDING_NAME, ""), installing);
             long id = dm.enqueue(req);
             // 记住本次下载：进程若在下载期间被回收，onResume 可据此接续安装
             app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -534,6 +553,10 @@ public final class Updater {
                     });
                     return;
                 }
+                app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                        .putString(KEY_INSTALLING_NAME, file.getName())
+                        .putString(KEY_INSTALLING_VERSION, currentVersionName(app))
+                        .apply();
                 installApk(app, file);
             }
         }, "dyindex-update-verify").start();
@@ -579,17 +602,18 @@ public final class Updater {
                 .remove(KEY_PENDING_SHA_URL).apply();
     }
 
-    /** 清掉共享目录里遗留的安装包；keepName 为待安装/待下载的那一份，必须保留。 */
-    private static void cleanUpdatesDir(Context app, String keepName) {
+    /** 清掉共享目录里遗留的安装包；keepName / keepName2 为待安装、正在安装中的那两份，必须保留。 */
+    private static void cleanUpdatesDir(Context app, String keepName, String keepName2) {
         try {
             File[] files = ApkFileProvider.updatesDir(app).listFiles();
             if (files == null) return;
             String keep = keepName == null ? "" : keepName;
+            String keep2 = keepName2 == null ? "" : keepName2;
             for (File f : files) {
                 if (!f.isFile()) continue;
                 // 安装器已拉起但用户尚未确认时切回应用会再次触发下载流程，
                 // 此时绝不能删掉正在被安装器读取的包（否则安装会报解析失败）。
-                if (f.getName().equals(keep)) continue;
+                if (f.getName().equals(keep) || f.getName().equals(keep2)) continue;
                 if (f.getName().endsWith(".apk")) f.delete();
             }
         } catch (Throwable ignored) {
@@ -754,7 +778,7 @@ public final class Updater {
     // ===== 工具 =====
 
     private static void toast(final Context ctx, final String msg) {
-        new Handler(Looper.getMainLooper()).post(new Runnable() {
+        MAIN.post(new Runnable() {
             @Override
             public void run() {
                 Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show();

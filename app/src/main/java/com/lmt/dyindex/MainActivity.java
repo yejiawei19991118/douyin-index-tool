@@ -73,7 +73,8 @@ public class MainActivity extends Activity {
 
     private String extractJs;
     private volatile String lastCsv;
-    private volatile int lastRowCount;
+    // 布局初始化完成（未激活时 onCreate 会直接 finish，此后不应再跑前台逻辑）。
+    private boolean ready;
     // 当前抓取模式（默认关键词）。
     private int mode = MODE_KEYWORD;
     private final Button[] modeChips = new Button[MODE_LABELS.length];
@@ -156,8 +157,10 @@ public class MainActivity extends Activity {
     private final Runnable stuckWatchdog = new Runnable() {
         @Override
         public void run() {
-            if (webView == null) return;
-            webView.evaluateJavascript(
+            // 捕获局部引用：回调可能在 onDestroy（webView 已置空）之后才到达。
+            final WebView view = webView;
+            if (view == null) return;
+            view.evaluateJavascript(
                     "(function(){try{var b=document.body?document.body.innerText:'';" +
                             "var l=b.indexOf('加载中')>=0;" +
                             "var c=b.indexOf('人群分析')>=0||b.indexOf('地域分布')>=0||" +
@@ -179,7 +182,7 @@ public class MainActivity extends Activity {
                             if (loading && !hasContent && !stuckReloadDone) {
                                 stuckReloadDone = true;
                                 setStatus("检测到页面卡在加载中，自动重试…");
-                                webView.reload();
+                                if (!destroyed) view.reload();
                             }
                         } catch (Exception e) {
                             android.util.Log.w("DyRecovery", "stuck-check parse failed: " + e.getMessage());
@@ -330,6 +333,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(root);
+        ready = true;
 
         extractJs = readAsset("extract.js");
 
@@ -465,7 +469,6 @@ public class MainActivity extends Activity {
         pageNameCache = "";
         pageTypeCache = "";
         lastCsv = null;
-        lastRowCount = 0;
         if (rankingBtn != null) {
             rankingBtn.setEnabled(false);
             rankingBtn.setAlpha(0.4f);
@@ -649,7 +652,6 @@ public class MainActivity extends Activity {
                 pageNameCache = kw;
                 pageTypeCache = o.optString("pageType", "");
                 lastCsv = csv;
-                lastRowCount = rows;
                 final String displayName = pageNameCache.isEmpty() ? keywordCache : pageNameCache;
                 ui.post(new Runnable() {
                     @Override
@@ -676,6 +678,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // 未激活时 onCreate 已 finish 并跳转激活页，这里不再跑任何前台逻辑。
+        if (!ready) return;
         // 回到前台时刷新 Cookie 库，保证启动/恢复时读到的登录态是最新的。
         CookieManager.getInstance().flush();
         // 上一次更新下载若已结束（进程曾被杀导致完成广播丢失），这里补上安装。
@@ -691,6 +695,10 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        if (!ready) {
+            super.onPause();
+            return;
+        }
         // 切后台前把内存中的登录 Cookie 落盘，进程被回收后仍能免登录。
         CookieManager.getInstance().flush();
         ui.removeCallbacks(pollReinject);
@@ -715,9 +723,8 @@ public class MainActivity extends Activity {
         // 先置位再 loadUrl("about:blank")：否则 onPageStarted/onPageFinished 会在销毁过程中
         // 重新 postDelayed 超时与看门狗任务，持有已销毁的 Activity。
         destroyed = true;
-        ui.removeCallbacks(pollReinject);
-        ui.removeCallbacks(loadTimeoutRunnable);
-        ui.removeCallbacks(stuckWatchdog);
+        // 一次清空：含轮询、超时、看门狗与 onPageFinished 里 400ms 的状态延迟任务。
+        ui.removeCallbacksAndMessages(null);
         Updater.stopWatch(this);
         if (webView != null) {
             webView.loadUrl("about:blank");

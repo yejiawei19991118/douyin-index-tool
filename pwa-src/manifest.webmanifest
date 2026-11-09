@@ -3,6 +3,7 @@
   "short_name": "抖音指数排名",
   "description": "抖音指数人群分析 CSV 的离线综合排名工具",
   "lang": "zh-CN",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

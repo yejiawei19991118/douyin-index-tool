@@ -169,6 +169,14 @@ public class ActivationActivity extends Activity {
         Updater.checkAndPrompt(this, false);
     }
 
+    @Override
+    protected void onDestroy() {
+        // 激活成功后会立刻 finish：摘掉更新下载的完成监听，避免静态接收器长期持有已销毁的页面。
+        // 下载本身不受影响，MainActivity 回前台时由 resumePendingInstall 接续安装。
+        Updater.stopWatch(getApplicationContext());
+        super.onDestroy();
+    }
+
     private void doActivate() {
         final String card = cardInput.getText().toString();
         if (LicenseManager.normalize(card).isEmpty()) {

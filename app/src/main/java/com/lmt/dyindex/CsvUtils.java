@@ -24,12 +24,4 @@ public final class CsvUtils {
         if (kw.isEmpty()) return FALLBACK;
         return kw.replaceAll(ILLEGAL, "_");
     }
-
-    /**
-     * 导出文件名：按关键词固定命名（不带时间戳），同名覆盖，
-     * 反复抓取只会保留「每个关键词一份最新结果」，不会在下载目录堆重复文件。
-     */
-    public static String fileNameFor(String keyword) {
-        return "抖音指数_" + sanitizeFileName(keyword) + "_人群分析.csv";
-    }
 }

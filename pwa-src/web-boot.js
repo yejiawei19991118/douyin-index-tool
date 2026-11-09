@@ -251,8 +251,9 @@
       toast('导入失败：' + (e && e.message ? e.message : e));
       return;
     }
-    const exportBtn = byId('exportBtn');
-    if (exportBtn && !exportBtn.disabled) toast('导入完成');
+    // 用页面真实状态判断是否导入成功：格式不支持 / 空文件时 handleFile 会提前 return，
+    // 此前的 exportBtn.disabled 判断会把上一次成功的结果当成本次成功。
+    if (typeof state !== 'undefined' && state && state.status === 'success') toast('导入完成');
   }
 
   async function importFromClipboard() {

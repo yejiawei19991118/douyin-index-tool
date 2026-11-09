@@ -4,7 +4,7 @@ import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;
 
-/** {@link CsvUtils} 的单测：文件名清洗与固定命名规则。 */
+/** {@link CsvUtils} 的单测：文件名清洗规则。 */
 public class CsvUtilsTest {
 
     @Test
@@ -29,17 +29,5 @@ public class CsvUtilsTest {
         assertEquals(CsvUtils.FALLBACK, CsvUtils.sanitizeFileName(""));
         assertEquals(CsvUtils.FALLBACK, CsvUtils.sanitizeFileName(null));
         assertEquals(CsvUtils.FALLBACK, CsvUtils.sanitizeFileName("   "));
-    }
-
-    @Test
-    public void 导出文件名按关键词固定且带完整后缀() {
-        assertEquals("抖音指数_穿搭_人群分析.csv", CsvUtils.fileNameFor("穿搭"));
-        assertEquals("抖音指数_a_b_人群分析.csv", CsvUtils.fileNameFor("a/b"));
-    }
-
-    @Test
-    public void 缺少关键词时导出文件名仍合法() {
-        assertEquals("抖音指数_关键词_人群分析.csv", CsvUtils.fileNameFor(null));
-        assertEquals("抖音指数_关键词_人群分析.csv", CsvUtils.fileNameFor(""));
     }
 }

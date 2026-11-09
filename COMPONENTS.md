@@ -40,10 +40,10 @@
 | 操作按钮组 | `runBtn`、`rankingBtn` | 开始抓取 / **综合排名**，两个按钮等宽；抓取成功后自动启用「综合排名」（失败则保留上一份成功结果，可点开旧数据）；CSV / xlsx 导出统一在排名页内完成，外壳层不再写系统下载目录 |
 | 页面跳转与提示 | `openRanking()`、`toast()`、`onEditorAction` | `openRanking` 把缓存的 CSV 通过 `RankingActivity.stageCsv()` 同进程静态暂存交接（CSV 动辄数百 KB，走 Intent extra 会撞 Binder 约 1MB 上限），Intent 只带页名 / 页型（无成功数据时提示先抓取）；`toast` 统一切主线程短提示；`onEditorAction` 处理输入法「搜索 / 完成」键，等价于点「打开」 |
 | 注入与保活 | `injectExtractor()`、`pollReinject` | 注入 assets 脚本；每 2.5s 轮询补注入，应对 SPA 路由重置导致脚本丢失；`POSTROBOT_READY_SEED` 预热与注入检查**合并为一次 `evaluateJavascript`**（预热脚本自带幂等守卫），省掉一半跨进程调用；**仅前台轮询**（`onPause` 停止、`onResume` 恢复），切后台（如打开排名页）时停止以省电省 CPU |
-| 前后台调度 | `onResume` / `onPause` | 回前台：Cookie 落盘 → `Updater.resumePendingInstall()` 补装 → `Updater.maybeShowChangelog()` 弹「更新内容」（刚升级完首次打开，同一版本仅一次）→ `Updater.checkAndPrompt(..., false)` 静默查更新 → 重启注入轮询；切后台：Cookie 落盘，停止轮询并移除加载超时 / 卡死看门狗（后台 evaluateJavascript 与 reload 只会白耗电） |
-| 抓取结果缓存 | `lastCsv`、`lastRowCount`、`pageNameCache`、`pageTypeCache`、`keywordCache`（均 `volatile`）、`destroyed` | 供「综合排名」与导出使用；`pageNameCache` 存抓取侧识别出的页名（达人昵称 / 话题名 / 视频标题），`pageTypeCache` 存 keyword/topic/daren/video，`keywordCache` 为输入兜底；`destroyed` 在 `onDestroy` 先置位，`onPageStarted` / `onPageFinished` 据此直接返回，避免销毁过程中再投递超时与看门狗任务 |
+| 前后台调度 | `onResume` / `onPause`、`ready` | 回前台：Cookie 落盘 → `Updater.resumePendingInstall()` 补装 → `Updater.maybeShowChangelog()` 弹「更新内容」（刚升级完首次打开，同一版本仅一次）→ `Updater.checkAndPrompt(..., false)` 静默查更新 → 重启注入轮询；切后台：Cookie 落盘，停止轮询并移除加载超时 / 卡死看门狗（后台 evaluateJavascript 与 reload 只会白耗电）；`ready` 在 `setContentView` 之后置位，未激活（`onCreate` 已 `finish` 并跳激活页）时两个回调直接返回，不再发起更新检查与轮询 |
+| 抓取结果缓存 | `lastCsv`、`pageNameCache`、`pageTypeCache`、`keywordCache`（均 `volatile`）、`destroyed` | 供「综合排名」与导出使用；`pageNameCache` 存抓取侧识别出的页名（达人昵称 / 话题名 / 视频标题），`pageTypeCache` 存 keyword/topic/daren/video，`keywordCache` 为输入兜底；`destroyed` 在 `onDestroy` 先置位，`onPageStarted` / `onPageFinished` 据此直接返回，避免销毁过程中再投递超时与看门狗任务 |
 | UI 样式工具 | `bg()`、`actionButton()`、`hDivider()`、`addWeighted()`、`dp()` | 圆角背景 / 主次按钮样式 / 分割线 / 等宽排布 / dp 换算 |
-| 资源与生命周期 | `readAsset()`、`onKeyDown`、`onDestroy` | 读取 assets；返回键回溯历史；销毁时先置 `destroyed`（后续 WebView 回调直接返回）、`Updater.stopWatch()` 摘掉下载监听，再移除全部 Handler 回调，`about:blank` → `stopLoading` → 摘除 `DyBridge` → `removeAllViews` → `destroy()`，避免 WebView 与静态接收器泄漏 |
+| 资源与生命周期 | `readAsset()`、`onKeyDown`、`onDestroy` | 读取 assets；返回键回溯历史；销毁时先置 `destroyed`（后续 WebView 回调直接返回）、`Updater.stopWatch()` 摘掉下载监听，再 `ui.removeCallbacksAndMessages(null)` 一次清空全部 Handler 回调（含轮询、超时、看门狗与 400ms 状态延迟任务），`about:blank` → `stopLoading` → 摘除 `DyBridge` → `removeAllViews` → `destroy()`，避免 WebView 与静态接收器泄漏 |
 
 ### 原生 ↔ JS 通信桥
 
@@ -62,7 +62,7 @@
 | 组件 | 符号 | 职责 |
 | --- | --- | --- |
 | 目标地址构造 | `AppUrls.BASE_URL`、`ANALYSIS_URL`、`DAREN_SEARCH_URL`、`VIDEO_SEARCH_URL`、`TOPIC_SEARCH_URL`、`targetUrl(kw)`、`darenSearchUrl(kw)`、`videoSearchUrl(kw)`、`topicSearchUrl(kw)`、`enc()` | 关键词→`/analysis?keyword=<kw>&tab=crowd&appName=aweme&source=creator`；达人→`/daren/search?keyword=`；视频→`/videosearch?query=`；话题→`/topicsearch?topic=`；统一 `enc()` 做 URL 编码（中文 / 空格 / 特殊字符），编码失败兜底原串 |
-| 导出文件名 | `CsvUtils.sanitizeFileName(kw)`、`CsvUtils.fileNameFor(kw)` | 清洗文件名非法字符、空值兜底「关键词」；按关键词固定命名（同名覆盖，不堆重复文件） |
+| 导出文件名 | `CsvUtils.sanitizeFileName(kw)` | 清洗文件名非法字符、空值兜底「关键词」（文件名由 `RankingActivity` 直接拼装） |
 | 版本号比较 | `VersionUtils.normalize / parseSegments / leadingInt / compare / isNewer` | 解析 `v1.2.3` 形态 tag（剥离前导 v 与 `-`/`+` 后缀），`leadingInt` 取每个分段的数字前缀（非数字段按 0），逐段数值比较，段数不一致按 0 补 |
 | 测试依赖 | `app/build.gradle` 的 `testImplementation 'junit:junit:4.13.2'` | JUnit 只进测试编译期，不打进 APK，运行时零第三方依赖的约定不变 |
 
@@ -71,7 +71,7 @@
 | 测试类 | 覆盖点 |
 | --- | --- |
 | `AppUrlsTest` | 中文百分号编码、空格→加号、`&`/`=` 转义、固定查询参数保留、空关键词与 null；达人/视频/话题三个搜索地址的前缀、参数名（`keyword`/`query`/`topic`）、中文编码与空值兜底 |
-| `CsvUtilsTest` | 非法字符全替换、首尾空白、空/null 兜底、固定命名与完整后缀 |
+| `CsvUtilsTest` | 非法字符全替换、首尾空白、空/null 兜底 |
 | `VersionUtilsTest` | 前导 v / 后缀剥离、段数不一致视为相等、1.10 &gt; 1.9、主版本优先、空版本最低 |
 
 ---
@@ -83,20 +83,20 @@
 | 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 每次重新打开/回到前台都静默查（仅 60s 进程内冷却、失败静默）、`manual=true` 用户点「更新」（无视冷却并回提示）；发现新版即后台下载并调起系统安装器（同版本已有下载在途时跳过）；**并把该版本的 `body`（发布时的提交信息）写入 `KEY_NOTES_VERSION` / `KEY_NOTES_BODY`，供装完首次打开离线弹窗**；私有仓库 404 给可读提示而非崩溃 |
 | 检查节流与并发 | `AUTO_COOLDOWN_MS`（60s）、`sLastAutoCheckAt`、`sChecking`（`AtomicBoolean`） | 自动检查冷却；`compareAndSet` 保证同一时刻只有一次检查线程，手动重复点击提示「正在检查更新」 |
 | Release 解析 | `fetchLatest()`、`parseRelease(String)`、`Release`、`downloadable()`、`currentVersionName(context)` | `currentVersionName` 读 `PackageInfo.versionName`（空/异常返回空串）作为比较基准；取 `tag_name` 规整后与当前 `versionName` 比较；从 `assets` 挑 `.apk`（优先带 `release` 字样）与 `.apk.sha256`；`downloadable()` 判断是否找齐可下载项 |
-| 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置，但仍继续下载）；下载到应用私有 `updates/` 目录（`dyindex-update-<版本>.apk`）；下载前 `cleanUpdatesDir(app, 待装文件名)` 清理遗留安装包（保留待安装的那一份）；把下载 id / 文件名 / sha 地址写入 `SharedPreferences` 以供接续 |
-| 下载完成监听 | `watchDownload()`、`stopWatch()`、`sReceiver` | 动态注册 `ACTION_DOWNLOAD_COMPLETE`，只处理本次下载 id；Android 13+ 用三参重载显式 `RECEIVER_EXPORTED`，低版本走两参重载；重复挂载前先注销旧接收器；`stopWatch` 在 `MainActivity.onDestroy` 调用，避免静态接收器长期持有已销毁的 Activity |
+| 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置，但仍继续下载）；下载到应用私有 `updates/` 目录（`dyindex-update-<版本>.apk`）；下载前 `cleanUpdatesDir(app, 待装文件名, 正在安装的文件名)` 清理遗留安装包（后两者都保留）；把下载 id / 文件名 / sha 地址写入 `SharedPreferences` 以供接续 |
+| 下载完成监听 | `watchDownload()`、`stopWatch()`、`sReceiver` | 动态注册 `ACTION_DOWNLOAD_COMPLETE`，只处理本次下载 id；Android 13+ 用三参重载显式 `RECEIVER_EXPORTED`，低版本走两参重载；重复挂载前先注销旧接收器；`stopWatch` 在 `MainActivity.onDestroy` 与 `ActivationActivity.onDestroy` 调用，避免静态接收器长期持有已销毁的 Activity（下载不受影响，回前台由 `resumePendingInstall` 接续） |
 | 下载状态查询 | `queryStatus(app, id)`、`STATUS_UNKNOWN` | 查询 DownloadManager 状态；记录已不存在返回 `STATUS_UNKNOWN`，由调用方按「已终结」处理 |
 | 校验与安装 | `Updater.handleIfFinished()` | 下载完成广播 / onResume 补装两路；状态未终结返回 false 继续等待；SHA-256 摘要校验 → 签名兼容性比对 → 调起系统安装器；摘要与签名校验整段放后台线程（`dyindex-update-verify`）；签名不一致时引导卸载重装，**Activity 已销毁时改用应用上下文 Toast 提示，不再静默丢弃更新**；**所有 UI 回调（runOnUiThread / 弹对话框）均先判 `isFinishing() || isDestroyed()`** |
 | 摘要资产 | `fetchSha256(urlStr)` | 拉取 `.apk.sha256` 文本，取第一段并校验 64 位十六进制；取不到返回空串（此时不否决下载，交给签名校验与安装器兜底） |
-| 待装记录 | `clearPending(context)`、`cleanUpdatesDir(context, keepName)`、`PREFS` / `KEY_PENDING_*` | 清除 `pending_download_id` / `pending_file_name` / `pending_sha_url`；清理共享目录里遗留的 `.apk`，但**跳过待安装文件**（用户未确认安装就切回应用时会再次进入下载流程，删掉正在被安装器读取的包会导致安装解析失败） |
+| 待装记录 | `clearPending(context)`、`cleanUpdatesDir(context, keepName, keepName2)`、`PREFS` / `KEY_PENDING_*` / `KEY_INSTALLING_*` | 清除 `pending_download_id` / `pending_file_name` / `pending_sha_url`；清理共享目录里遗留的 `.apk`，但**跳过待下载与已调起安装器（版本号未变）的两份**（删掉正在被安装器读取的包会导致安装解析失败）；调起安装器前记录 `installing_file_name` / `installing_version`，升级完成后版本号变化即不再保留旧包 |
 | 签名比较 | `signatureMatches()`、`signaturesOf()`、`signaturesFrom()`、`fingerprintsOf()`、`SIGNATURE_FLAG` | 读已装应用与待装 APK 的签名集合（API 26–27 用 `signatures`，API 28+ 用 `signingInfo` 的 `getApkContentsSigners` / `getSigningCertificateHistory`）；按「APK 的每个签名者都在已装应用签名集合内」比较，**与枚举顺序无关**（不用 `List.equals`）；任一方读不出签名时放行给系统安装器 |
 | 签名不一致处理 | `showSignatureMismatchDialog()`、`openUninstall()`、`copyText()`、`RELEASES_PAGE` | 「无法覆盖安装」对话框：去卸载 / 复制下载地址 / 稍后（删除待装包）；卸载调 `ACTION_DELETE`，复制用系统剪贴板 |
 | 安装权限引导 | `openInstallPermissionSettings()` | 跳 `ACTION_MANAGE_UNKNOWN_APP_SOURCES`（带 package），失败退回应用列表页 |
 | 安装器调用 | `installApk(context, file)` | 用 `ApkFileProvider` 的 content:// URI + `APK_MIME` + `FLAG_GRANT_READ_URI_PERMISSION` 调 `ACTION_VIEW`；失败提示安装包路径 |
 | 安装包共享 | `ApkFileProvider`（authority `${applicationId}.apk`，路径 `updates/`） | 自建极简 ContentProvider：`onCreate()` 直接返回 true（无初始化副作用）；`buildUri()` 拼 `content://<authority>/updates/<文件名>`；`updatesDir()` 取应用私有外部目录、不可用时退回内部私有目录；`openFile` 仅允许只读访问 `updates/<单层文件名>`（拒绝写模式、`/`、`\`、`..`），`getType` 固定 APK MIME；`query/insert/delete/update` 均为空实现（非协商接口） |
-| 断点接续 | `Updater.resumePendingInstall()` + `SharedPreferences` | 进程若在下载期间被回收，onResume 依据持久化的下载 id 接续校验与安装；已终结则直接处理，否则重新挂广播 |
+| 断点接续 | `Updater.resumePendingInstall()` + `SharedPreferences` | 进程若在下载期间被回收，onResume 依据持久化的下载 id 接续校验与安装；已终结则直接处理，否则重新挂广播；持久化记录残缺（有 id 无文件名）时清掉，避免永久卡在「下载在途」而不再发起新下载 |
 | 更新内容弹窗 | `maybeShowChangelog()`、`showChangelog()`、`fetchReleaseBody()`、`wasUpgraded()`、`KEY_LAST_RUN_VERSION` | `MainActivity.onResume` 调用；当前 `versionName` 与 `last_run_version` 不同即视为刚升级（先落盘再弹，避免重复）：优先用升级前缓存的同版本说明**离线直接弹**，缓存缺失时后台请求 `releases/tags/v<当前版本>` 取 `body` 兜底（8s 超时、需 UA、失败静默）并回写缓存；`wasUpgraded()` 用 `lastUpdateTime`/`firstInstallTime` 区分覆盖安装与全新安装（全新安装不打扰）；弹窗标题「更新内容 v<版本>」，正文超 4000 字符截断提示看 Releases，显示前判 `isFinishing()`/`isDestroyed()` |
-| 工具 | `sha256Of(File)`、`toast(Context, msg)` | 8KB 分块计算 SHA-256（小写 hex，失败返回空串）；所有 Toast 经主线程 Handler 投递 |
+| 工具 | `sha256Of(File)`、`toast(Context, msg)` | 8KB 分块计算 SHA-256（小写 hex，失败返回空串）；所有 Toast 经复用的同一个主线程 Handler 投递 |
 | 清单声明 | `AndroidManifest.xml` | `REQUEST_INSTALL_PACKAGES` 权限 + `<provider>` 声明 |
 
 ---
@@ -107,18 +107,18 @@
 | --- | --- | --- |
 | 配置 | `TITLES`、`REGION_TABS`、`lastGenderBoxText`、`lastBrowsingTabs` | 六个区块名（地域/年龄/性别/用户内容浏览/手机品牌/手机价格）；地域维度优先级 **城市 → 城市级别 → 省份**；后两者暂存性别容器原文与下钻概况，供诊断快照回传 |
 | 页型识别 | `detectPage()`、`pageLabel()` | 按 URL 识别 keyword（`/analysis?keyword=`）/ topic（`/analysis?topic=`）/ daren（`/daren/detail`）/ video（`/videoanalysis`）；区块按页面实际存在探测，缺失自动跳过（达人页无内容浏览块，仅达人页有手机分布块） |
-| 页名 | `pageName()`、`textOf()` | **状态栏 / 综合排名页标题 / 导出文件名的唯一来源（同源）**（导出表内不再单列关键词）。四种页面各自按真实渲染元素取值，不做坐标/黑名单排除：关键词页与话题页取页头筛选行的主题 chip（`.filterDate-*` 内的 `.tag-*`，取不到回退 URL 参数）；达人页取作者资料卡昵称（`.author-*` 卡片内的 `.nickname-*`，回退 `达人+uid`）；视频页取视频详情卡标题（`.videoAnalysis-* → .tabHead-* → span.title-*`，回退 `视频+id`）。类名为 CSS Modules（语义前缀 + 构建哈希），按前缀匹配；页名在切页签/下钻之前采集，避免标题元素被重渲染 |
+| 页名 | `pageName()`、`textOf()` | **状态栏 / 综合排名页标题 / 导出文件名的唯一来源（同源）**（导出表内不再单列关键词）。四种页面各自按真实渲染元素取值，不做坐标/黑名单排除：关键词页与话题页取页头筛选行的主题 chip（`.filterDate-*` 内的 `.tag-*`，优先取与 URL keyword 完全一致的那个，并排除日期类 chip（近7天 / 2024-01 等），取不到回退 URL 参数）；达人页取作者资料卡昵称（`.author-*` 卡片内的 `.nickname-*`，回退 `达人+uid`）；视频页取视频详情卡标题（`.videoAnalysis-* → .tabHead-* → span.title-*`，回退 `视频+id`）。类名为 CSS Modules（语义前缀 + 构建哈希），按前缀匹配；页名在切页签/下钻之前采集，避免标题元素被重渲染 |
 | 基础工具 | `sleep()`、`bridge()`、`rectOf()`、`isVisible()` | 延时；统一封装 `window.DyBridge` 回传（桥不存在时静默，便于桌面浏览器调试）；安全取 `getBoundingClientRect`；按 display/visibility/opacity 与尺寸判定元素可见 |
-| 区块定位 | `findTitleMarks()`、`sectionFor()`、`getCharts()`、`findChartIn()`、`sectionRoot()`、`hasTitle()` | TreeWalker 扫纯文本节点定位标题；按垂直 + 水平距离判定图表归属（同高时取水平中心更近者）；收集图表容器与 tooltip 兄弟节点，标题定位不全时按出现顺序逐个补位；`sectionRoot` 取含 canvas 的最低祖先；`hasTitle` 判断区块标题是否在场 |
+| 区块定位 | `findTitleMarks()`、`sectionFor()`、`getCharts(marks)`、`findChartIn()`、`sectionRoot()`、`hasTitle()` | TreeWalker 扫纯文本节点定位标题；按垂直 + 水平距离判定图表归属（同高时取水平中心更近者）；收集图表容器与 tooltip 兄弟节点，标题定位不全时按出现顺序逐个补位；`getCharts` 可复用调用方已算出的标题位置，避免一次抓取里重复全文档遍历；`sectionRoot` 取含 canvas 的最低祖先；`hasTitle` 判断区块标题是否在场 |
 | canvas 采集 | `parseTip()`、`scanCanvas()`、`scanSection()` | 解析 tooltip 的「占比 / TGI」：先剥空白与「点击查看兴趣详情」，去千分位后同时兼容负 TGI 与 `TGI--` 占位，只有占比没有 TGI 的形态（手机分布）也收；`scanCanvas` 按 4 行 y（0.12/0.3/0.5/0.72）× 56 列 x 步进派发合成 mousemove，并记住上一次 tooltip 文本，只有内容变化才解析，避免把残留 tooltip 当新柱；`scanSection(title)` 先按标题找图表，找不到再退回 `sectionRoot(title)` 内的 `.lightcharts-container` 兜底扫描 |
-| 地域采集 | `parseRegionTable()`、`clickTab()`、`extractRegion()` | 解析 DOM 表格；切换子维度页签（限定在含「地域分布」的祖先容器内点击，避免误点页面其它同名 tab）；按维度优先级编排采集 |
+| 地域采集 | `parseRegionTable()`、`clickTab()`、`extractRegion()` | 解析 DOM 表格；切换子维度页签（限定在含「地域分布」的祖先容器内点击，避免误点页面其它同名 tab）；页签切换失败时跳过后续维度，避免同一份表格重复写入多个维度；全部维度都失败时把当前视图的数据归到「最后成功切换的维度」，而不是排名页不认识的「当前视图」（否则会被整段丢弃） |
 | 通用区块采集 | `parseTableNear()`、`extractGeneric()` | 手机品牌/价格分布：优先 canvas 扫描，空则退「标题附近含 排名+TGI 表头容器」的 DOM 表格解析；标题不在场直接跳过 |
 | 性别采集 | `nearestCommon()`、`extractGender()` | 取「男性 / 女性」标签的最小公共祖先容器隔离解析；紧邻正则避免命中介绍文案 |
 | 兴趣下钻采集 | `browsingChart()`、`chartStale()`、`drillHost()`、`backButton()`、`clickChart()`、`sweepBars()`、`extractBrowsing()` | 「用户内容浏览分布」实为**柱状图**：单行扫 x 读出全部主标签 → 逐个点击柱体下钻（点击 y 取 0.80，落在柱体上）→ 扫子层 → 点「返回上一级」回主层；子标签名为「主标签_子标签」，并把主标签写入 `父类` 字段；输出 `时尚` / `时尚_穿搭` 平铺行 |
 | 输出 | `csvEscape()`、`buildCsv()` | CSV 转义（逗号 / 双引号 / CR / LF / **制表符**）；按固定区块顺序 + 维度组装 CSV（表头 `区块,分类,占比,TGI,父类`）；固定顺序之外的新增区块追加在末尾，避免静默丢数据；`父类` 由下钻时的主标签显式写入，供排名侧判定二级类目，不再依赖 `_` 命名约定 |
 | 流程编排 | `scrollThrough()`、`rowCount()`、`countRows()`、`extractAll()` | 整页滚动逼出懒加载图表后回顶；`rowCount` 兼容「平铺数组」与「页签对象」两种区块结构；`countRows` 汇总全部区块；采集顺序固定为「年龄 → 手机品牌/价格 → 兴趣下钻 → 性别 → 地域」（地域会切子页签重渲染，必须放最后），页名在切页签之前采集 |
 | 诊断快照 | `dumpNearTitle()`、`probeCanvasTip()`、`debug`（随结果回传） | `dumpNearTitle` 从标题向上最多 4 层 dump 文本节点（标记 `[L]` 叶子 / `[C]` 容器）；`probeCanvasTip` 沿 canvas 单行派发 30 次 mousemove 采集 tooltip 文本；`debug` 含标题命中位置、图表归属、性别容器原文、兴趣下钻概况（主标签数 / 成功下钻数 / 行数）；**仅在 0 行时**追加 DOM dump 与 canvas 探针，正常抓取路径不再做这几轮全文档扫描 |
-| 触发组件 | `window.__dyRun()`、`watch()` | 四种页面统一**手动触发**：`__dyRun` 由原生「开始抓取」按钮调用，带 `__dyRunning` 重入保护，结束后 `onResult` / `onError` 回传；`watch` 每 1s 探测「有 canvas 且命中区块标题」，就绪即提示并停止，300 次（约 5 分钟）仍未就绪则提示检查页面；脚本本身从不自动抓取 |
+| 触发组件 | `window.__dyRun()`、`watch()` | 四种页面统一**手动触发**：`__dyRun` 由原生「开始抓取」按钮调用，带 `__dyRunning` 重入保护，结束后 `onResult` / `onError` 回传；`watch` 每 1s 探测「有 canvas 且命中区块标题」，就绪后不再每秒重扫整页，仅在 SPA 路由（`location.href`）变化时重新探测并提示；300 次（约 5 分钟）仍未就绪则提示检查页面；脚本本身从不自动抓取 |
 
 ---
 
@@ -133,30 +133,30 @@
 | 页型标签 | `PAGE_TYPE_LABEL` / `tipsHTML()` | 控制区标题按页型显示「当前关键词 / 当前话题 / 当前达人 / 当前视频」；标签独占一行居中、`white-space:nowrap` 固定不收缩（不会被长标题压成竖排），正文**完整展示不截断**，仅在超长英文串处强制换行 |
 | 数据入口 | `window.loadFromCsv()`、`parseCsv()`、`parseCsvText()` | 原生传入 CSV 文本 → 内置 RFC4180 解析器（无第三方依赖，返回**二维数组**）→ `buildTable` → `processTable`；自动完成清洗、打分、四象限、二级混合榜。两条入口共用同一解析器：原生走 `loadFromCsv → parseCsvText`，网页版走 `handleFile → parseCsv → parseCsvText`，后者只做「空结果判错」，不得再按 PapaParse 的 `{ rows }` 结构取数 |
 | 预挂载入口 | `window.__rankingPayload`、`window.__autoLoadRanking()` | 原生可在注入前把 `{csv, keyword, pageType}` 挂到 `window`，`init()` 检测到即自动载入，省去 `evaluateJavascript` 的时序等待 |
-| 原生回传桥 | `DyRankingBridge`（`window.DyRankingBridge`） | `exportCsv(text, name)`：页面「导出结果」交由原生写入系统下载目录；`.xlsx` 走 base64 解码后二进制写入，`.csv` 走 UTF-8 字节写入；**同名文件覆盖写先置 `IS_PENDING=1`，失败只还原标记、绝不删除用户上一份完整导出**；文件名经 `CsvUtils.sanitizeFileName` 净化；成功/失败由原生 Toast 单条提示（WebView 内 `<a download>` 不落盘）；`close()`：「返回抓取」关闭本 Activity |
-| 导出落盘细节 | `exportCsv()`、`findDownloadsFile()`、`doneValues()`、`toast()` | Android 10+ 走 MediaStore（`RELATIVE_PATH=Downloads`），先按 `DISPLAY_NAME + RELATIVE_PATH` 查同名文件，存在则复用 URI 并先标 pending；失败时：复用文件只还原 pending、新建文件才删除；Android 9 及以下写 `getExternalFilesDir(DOWNLOADS)` |
+| 原生回传桥 | `DyRankingBridge`（`window.DyRankingBridge`） | `exportCsv(text, name)`：页面「导出结果」交由原生写入系统下载目录；`.xlsx` 走 base64 解码后二进制写入，`.csv` 走 UTF-8 字节写入；**先把数据完整写进缓存临时文件，成功后才覆盖下载目录里的同名文件**，写入失败删掉半截文件（不再留下被截断的「假完整」文件）；文件名经 `CsvUtils.sanitizeFileName` 净化；成功/失败由原生 Toast 单条提示（WebView 内 `<a download>` 不落盘）；`close()`：「返回抓取」关闭本 Activity |
+| 导出落盘细节 | `exportCsv()`、`findDownloadsFile()`、`doneValues()`、`toast()` | Android 10+ 走 MediaStore（`RELATIVE_PATH=Downloads`），先按 `DISPLAY_NAME + RELATIVE_PATH` 查同名文件，存在则复用 URI 并先标 pending；失败时删除半截文件；Android 9 及以下写 `getExternalFilesDir(DOWNLOADS)` |
 | 页面日志 | `RankingActivity.onConsoleMessage` | 页面 console → logcat（tag `DyRankJS`），便于排查分析与导出问题 |
-| 多 Sheet 导出 | `buildMultiSheetXlsx()`、`xlsxSheetXml()`、`zipStore()`、`crc32()` | 纯 JS OOXML 生成器（crc32 + zip STORED + inline strings），一个区块一个 sheet；区块 sheet 隐藏「R（相对父类占比）」「R 判定」两列（10 列），**二级混合总榜** sheet 保留全部 12 列；仅对有数据的区块生成 sheet，顺序固定为 `STANDARD_BLOCKS` + 二级混合总榜 |
+| 多 Sheet 导出 | `buildMultiSheetXlsx()`、`xlsxSheetXml()`、`zipStore()`、`crc32()` | 纯 JS OOXML 生成器（CRC32 查表 + zip STORED + 文本列 inline strings），一个区块一个 sheet；**数值列（TGI / S / P / 综合分 / 名次）写成真正的数字单元格**，Excel 里可直接排序、求和；区块 sheet 隐藏「R（相对父类占比）」「R 判定」两列（10 列），**二级混合总榜** sheet 保留全部 12 列；仅对有数据的区块生成 sheet，顺序固定为 `STANDARD_BLOCKS` + 二级混合总榜 |
 | 导出命名 | `state.currentKeyword` | 文件名 `抖音指数_<页名>_综合排名.xlsx` 与页面标题都取自抓取侧的页名（`pageName`）；关键词/话题页=页头主题 chip、达人页=昵称、视频页=视频标题（不使用达人抖音号）。表内不再重复写 `关键词 / 榜单名称 / 分组名` 三列（文件名与 sheet 名已表达）。原生注入时 `loadFromCsv` 标记 `meta.nativeName`，`cleanData` 直接沿用该页名、不再按文件名规则二次截断，保证一致 |
 | 排名算法 | `assets/scoring.js`（`DyScoring.scoreRows` / `compositeOf` / `robustZ`） | 占比→规模分 S、TGI→偏好分 P：两维先在 log 空间做稳健标准化（中位数 0、1 IQR=1，IQR 有 `ln(1.2)` 下限防窄分布放大），再用有界单调映射 `100/(1+e^(-ln3·z))` 转为分数（中位数 50 分、1 IQR 对应 75/25 分、值域 (0,100) 且不做硬截断）；composite = `S^wS · P^(1-wS)` 几何合成（主榜 wS=0.5，任一维为 0 则综合分为 0，避免 0% 占比被高 TGI 抬进中上游）；名次区间 = wS∈{0.3,0.5,0.7} 三种权重下的最好/最差名次；四象限以 S/P 是否 ≥50 判定（HH 重点机会 / HL / LH / LL），某维 IQR=0（全榜无差异）时不判定四象限并提示「该维无差异」；样本 n&lt;2 时返回 NaN 并标记 `flatS/flatP`。注意 `share` 入参是小数（0.09=9%），与展示口径一致 |
 | 二级类目 R | `buildParentIndex()`、`isSecondaryRow()`、`computeR()` | R = 二级占比 ÷ 父类占比 ×100，**仅作说明列，不参与综合分与排名**；父类优先取抓取侧显式 `父类` 字段、旧文件回退 `_` 前缀；判定为「高于父类 / 未超父类 / 父类缺失 / 父类重复 / 父类占比为 0」的中性状态，R&gt;100 说明一/二级并非严格加和拆分，不做褒贬评价 |
-| 榜单计算 | `buildList()`、`buildKeywordResult()`、`rowsOf()`、`rankingComparator()`、`interpretationOf()` | `rowsOf(block)` 从 `cleanData` 预建的分组索引（`grouped`）按「关键词 + 区块」取行，避免对全量 `kept` 反复 `filter`；按区块生成榜单（兴趣块只用一级类目、剔除 TGI 异常与父类重复行；手机价格按出现顺序打档位序号并去重，复制副本再写 `seq` 不污染原始记录）；`rankingComparator` 排序键依次为综合分、占比、TGI、名称（`Intl.Collator` 中文排序）、原始行号，保证稳定可复现；`interpretationOf` 按四象限给一句话解读；二级子类另组「二级混合总榜」 |
+| 榜单计算 | `buildList()`、`buildKeywordResult()`、`rowsOf()`、`interpretationOf()` | `rowsOf(block)` 从 `cleanData` 预建的分组索引（`grouped`）按「关键词 + 区块」取行，避免对全量 `kept` 反复 `filter`；按区块生成榜单（兴趣块只用一级类目、剔除 TGI 异常与父类重复行；手机价格按出现顺序打档位序号并去重，复制副本再写 `seq` 不污染原始记录）；排序键依次为综合分、占比、TGI、名称（`Intl.Collator` 中文排序）、原始行号，保证稳定可复现；`interpretationOf` 按四象限给一句话解读；二级子类另组「二级混合总榜」（只要有二级行就生成，1 条也保留） |
 | 评分内部实现 | `VERSION`、`DEFAULT_EPS_SHARE`、`DEFAULT_EPS_TGI`、`DEFAULT_IQR_FLOOR`、`LINK_K`、`WEIGHT_SET`、`logSafe()`、`medianOfSorted()`、`quantileOfSorted()`、`robustZ()`、`scoreOfZ()`、`compositeOf()`、`orderBy()`、`scoreRows()`、`ascending()` | 纯函数、无 DOM 依赖：`logSafe` 规避 ln(0)；中位数/分位数在已排序数组上取值；`robustZ` 输出 log 空间稳健 z（IQR 下限 `DEFAULT_IQR_FLOOR`）；`scoreOfZ` 为有界映射；`compositeOf` 几何合成且任一分量为 0 即 0；`WEIGHT_SET = [0.3,0.5,0.7]` 依次算出区间名次；`scoreRows` 一次返回 `composite/s/sShare/p/pShare/rank/best/worst/q/flatS/flatP`，并由 UMD 包装同时支持浏览器全局与 Node `require` |
 | 标准区块 | `STANDARD_BLOCKS` | 地域分布-城市/城市级别/省份、年龄分布、性别分布、用户内容浏览分布、手机价格分布、手机品牌分布；缺失区块在覆盖率中如实标注，且不生成空 sheet |
-| 资产独立性 | `ranking.html` | 已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行；CSV 解析统一走内联 `parseCsvText`（不依赖 PapaParse），Excel 解析在 XLSX 未加载时给出明确提示而非崩溃（`CDN_OK = typeof XLSX !== 'undefined'`，当前恒为 false，即仅支持 CSV/JSON）。上传解析函数 `handleFile()` 仍保留，网页版由 `pwa-src/web-boot.js` 重新挂载导入入口后复用同一条解析链路（`handleFile → parseCsv → parseCsvText`）；新增 CSV 入口一律直接消费 `parseCsvText` 的二维数组返回值，避免出现第二套解析/取数约定 |
+| 资产独立性 | `ranking.html` | HTML5 标准模式（`<!DOCTYPE html>`）；已剥离 PapaParse/SheetJS CDN 与文件上传 UI，仅保留分析逻辑与渲染，可离线运行；CSV 解析统一走内联 `parseCsvText`（不依赖 PapaParse），Excel 解析在 XLSX 未加载时给出明确提示而非崩溃（`CDN_OK = typeof XLSX !== 'undefined'`，当前恒为 false，即仅支持 CSV/JSON）。上传解析函数 `handleFile()` 仍保留，网页版由 `pwa-src/web-boot.js` 重新挂载导入入口后复用同一条解析链路（`handleFile → parseCsv → parseCsvText`）；新增 CSV 入口一律直接消费 `parseCsvText` 的二维数组返回值，避免出现第二套解析/取数约定 |
 
 ### 5.1 解析、清洗与状态
 
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
-| 运行时状态 | `state` | `status`（idle/parsing/analyzing/success/error）、`file`、`parsed`、`hasKeywordField`、`keywords`、`currentKeyword`、`pageType`、`clean`、`keywordMeta`、`resultCache`（按关键词缓存榜单结果）、`sortState`（按表格缓存排序键/方向）、`generation`（异步任务代际令牌）、`collapsed`、`parsing`、`activeReader`（可中断的 FileReader）、`tableRegistry` / `domIdMap`（列表 id ↔ DOM 表 id）、`activeNavObserver`、`_stickyOffsetCache` |
+| 运行时状态 | `state` | `status`（idle/parsing/analyzing/success/error）、`file`、`hasKeywordField`、`keywords`、`currentKeyword`、`pageType`、`clean`、`keywordMeta`、`resultCache`（按关键词缓存榜单结果）、`sortState`（按表格缓存排序键/方向）、`generation`（异步任务代际令牌）、`collapsed`、`activeReader`（可中断的 FileReader）、`tableRegistry` / `domIdMap`（列表 id ↔ DOM 表 id）、`activeNavObserver`、`_stickyOffsetCache` |
 | 代际令牌 | `state.generation`、`resetForNewData()`、`clearAll()`、`loadFromCsv()` | 每次换文件/清空/原生再注入都自增；所有异步步骤（读文件、解析、分析）回写前先比对 token，过期结果直接丢弃；`loadFromCsv` 进入时自增并 `abort()` 进行中的 FileReader，避免上一份表的异步回调覆盖刚注入的新数据 |
-| 常量 | `MAX_UPLOAD_MB`(50)、`ENCODING_FFFD_MAX`(20)、`ENCODING_RATIO_MAX`(0.005)、`RANK_DISPLAY_LIMIT`(100)、`LIST_TRUNCATE`(20)、`ANOMALY_SAMPLE_MAX`(20)、`EXPORT_PROGRESS_ROWS`(5000)、`KEYWORD_NULL_RATIO_ALERT`(0.3)、`SEP`、`CONTENT_BLOCK`、`UNLABELED_KW`、`SINGLE_KW`、`SAMPLE_SOURCE`、`STANDARD_BLOCKS`、`QUADRANT_TEXT/CLASS` | 上传上限与提示、UTF-8 坏字判定、展示条数上限、异常明细截断、导出进度节流、关键词空值率告警、内部键分隔符、内容浏览块名、未标注/单关键词占位名、内置示例名、区块白名单、四象限文案与样式 |
-| 文本归一 | `toHalfWidth()`、`stripBOM()`、`trimAll()`、`normHeaderCell()`、`normCell()`、`blankText()`、`isBlankRow()`、`cellToText()`、`normalizeText()`、`normalizeNumericRaw()`、`isoDate()`、`deriveKeywordFromName()` | 全角转半角、去 BOM、去首尾空白、表头/单元格归一（全角空格、零宽字符）、空白行判定、单元格转文本（含日期格式化与告警计数）、数值原文归一、由文件名推导关键词（匹配「抖音指数 / 人群分析」等前后缀） |
+| 常量 | `MAX_UPLOAD_MB`(50)、`ENCODING_FFFD_MAX`(20)、`ENCODING_RATIO_MAX`(0.005)、`RANK_DISPLAY_LIMIT`(100)、`LIST_TRUNCATE`(20)、`ANOMALY_SAMPLE_MAX`(20)、`KEYWORD_NULL_RATIO_ALERT`(0.3)、`SEP`、`CONTENT_BLOCK`、`UNLABELED_KW`、`SINGLE_KW`、`SAMPLE_SOURCE`、`STANDARD_BLOCKS`、`QUADRANT_TEXT/CLASS` | 上传上限与提示、UTF-8 坏字判定、展示条数上限、异常明细截断、关键词空值率告警、内部键分隔符、内容浏览块名、未标注/单关键词占位名、内置示例名、区块白名单、四象限文案与样式 |
+| 文本归一 | `toHalfWidth()`、`stripBOM()`、`trimAll()`、`normHeaderCell()`、`normCell()`、`blankText()`、`isBlankRow()`、`cellToText()`、`isoDate()`、`deriveKeywordFromName()` | 全角转半角、去 BOM、去首尾空白、表头/单元格归一（全角空格、零宽字符）、空白行判定、单元格转文本（含日期格式化与告警计数）、由文件名推导关键词（匹配「抖音指数 / 人群分析」等前后缀） |
 | 数字解析 | `parseNumericString()`、`ascending()` | 去空白/千分位 → 全角转半角 → 识别并剥离 `%` → 严格正则校验；返回 `{ok, value, hadPct, raw}`，非法值不参与计算 |
 | 通用工具 | `err()`、`el()`、`fmt()`、`esc()`、`isFiniteNumber()`、`collator()`、`note()` | `err` 构造 `{code,message,detail}` 错误对象；`el` 取元素；`fmt` 统一数值展示（非数字显示「—」）；`esc` 做 HTML 实体转义（所有拼接进 innerHTML 的外部文本必须先过它）；`collator` 懒加载中文 `Intl.Collator`（多级 locale 回退）；`note` 按截断上限收集异常样例 |
 | 文件读取 | `readArrayBuffer()`、`decodeUtf8()`、`checkEncoding()` | FileReader 包装为 Promise（记录 `activeReader` 以支持中断）；UTF-8 解码并逐字符统计 U+FFFD；坏字数量或比例超阈值即报「请另存为 UTF-8」 |
-| 格式解析 | `parseCsvText()`、`parseCsv()`、`parseExcel()`、`jsonToRows()`、`objectArrayField()`、`papaRun()` | 内置 RFC4180 解析器（BOM、`\r\n`/`\n`、双引号转义、仅字段起始处的 `"` 进入引用态）；`parseCsv` 只判空；Excel 依赖 XLSX（未加载时明确报错）；JSON 支持对象数组或「包含对象数组字段的对象」，并取所有对象键的并集作为表头；`papaRun` 为已废弃占位（恒返回 `{workerFailed:true}`，已无调用方） |
+| 格式解析 | `parseCsvText()`、`parseCsv()`、`parseExcel()`、`jsonToRows()`、`objectArrayField()` | 内置 RFC4180 解析器（BOM、`\r\n`/`\n`、双引号转义、仅字段起始处的 `"` 进入引用态）；`parseCsv` 只判空；Excel 依赖 XLSX（未加载时明确报错，当前仅支持 CSV/JSON）；JSON 支持对象数组或「包含对象数组字段的对象」，并取所有对象键的并集作为表头 |
 | 表结构 | `buildTable()`、`matchFields()`、`FIELD_SPEC`、`keywordOptionLabel()` | 取首行表头、丢弃空行、超长行截断并统计多余单元格、短行补空；按「区块/分类/占比/TGI 必需，父类/关键词可选」匹配字段（字段名重复取第一列并提示）；关键词下拉文案对「未标注关键词」加核查提示 |
 | 数据清洗 | `cleanData()` + `stats` / `anomalies` / `samples` / `blocksPresent` / `blocksMissing` | 固定 9 步：①字段与值规范化（关键词空值归「未标注关键词」并计数）→②区块/分类空值行剔除→③占比解析（带 `%` 则除以 100 并校验 0–1；不带 `%` 时 ≤1 视为小数、&gt;1 且 ≤100 自动除以 100、&gt;100 判非法）→④TGI 解析（带 `%` 仅记异常、负数剔除）→⑤非标准区块剔除→⑥占比与 TGI 双 0 行剔除→⑦TGI=0 且占比&gt;0 标记异常（保留）→⑧重复检测（普通行按「关键词+区块+分类」去重，**跳过 TGI 异常行**，避免它抢先占键挤掉同组正常行；兴趣一级类目重复单独标记 `_parentDup`，不删除）→⑨产出 `kept` / `grouped` / `countByKeyword` / `parentInfo` 索引；同时统计多余单元格、日期格式化与关键词空值率超 30% 的软提示 |
 | 示例数据 | `makeSampleTable()`、`loadSample()` | 程序内置一份可直接演示的表头与数据行，覆盖主要区块；加载前若已有文件需确认覆盖，并走与真实文件相同的 `buildTable → processTable` 链路 |
@@ -171,19 +171,18 @@
 | 顶部提示 | `tipsHTML()`、`blockHint()`、`safeAnchor()` | 按页型生成「当前关键词/话题/达人/视频」与副标题；区块说明随区块变化；区块名转安全锚点 id |
 | 排序 | `getSort()`、`sortValue()`、`bindSortHandlers()`、`bindSortHandlersOne()`、`refreshTable()`、`thSort()`、`displayRows()`、`doSort()` | 每个表格独立记录排序键与方向（默认 `rank` 升序）；`sortValue` 支持综合分、占比、TGI、名称、`rank`、`rankLo`（名次区间，缺值退 `rank`）、`R`；`doSort` 同一列再次点击翻转方向、换列则重置为升序，只重排该表并保留其它表状态；通过 `tableRegistry` 从 DOM 表 id 反查列表 id；`displayRows` 按 `RANK_DISPLAY_LIMIT` 截断展示 |
 | 导航与吸顶 | `stickyOffset()`、`refreshSticky()`、`setupNav()`、`setActiveNav()`、`teardownNav()` | 动态生成区块目录；`IntersectionObserver` 同步高亮；滚动点击按「topbar + 控制区 + nav」偏移精确定位；窗口 resize / 控制区折叠后重算 CSS 变量 `--sticky-h`、`--nav-h` |
-| 反馈与错误 | `showLoading()`、`showError()`、`clearError()`、`clearLoadingArea()`、`setStatus()`、`showToast()`、`updateParseProgress()` | 加载态（保留旧结果或清空两种模式）、错误条（可关闭，关闭后按当前状态恢复）、状态机切换、轻提示、解析进度条（100ms 节流） |
-| UI 状态同步 | `syncUI()`、`hasValidRecords()`、`currentResult()`、`currentKeywordLabel()`、`fileSizeText()` | 按 `state.status` 统一启停「示例 / 重新分析 / 导出 / 清空 / 折叠」等按钮并同步顶部摘要；`hasValidRecords` 汇总混合榜与各区块有效条数（全 0 禁止导出）；`currentResult` 取当前关键词缓存结果；`currentKeywordLabel` 处理无关键词列时显示文件名推导名；`fileSizeText` 生成文件名 + 大小摘要 |
+| 反馈与错误 | `showLoading()`、`showError()`、`clearError()`、`clearLoadingArea()`、`setStatus()`、`showToast()` | 加载态（保留旧结果或清空两种模式）、错误条（可关闭，关闭后按当前状态恢复）、状态机切换、轻提示 |
+| UI 状态同步 | `syncUI()`、`hasValidRecords()`、`currentResult()` | 按 `state.status` 统一启停「示例 / 重新分析 / 导出 / 清空 / 折叠」等按钮并同步顶部摘要；`hasValidRecords` 汇总混合榜与各区块有效条数（全 0 禁止导出）；`currentResult` 取当前关键词缓存结果 |
 | 交互绑定与启动 | `bindEvents()`、`init()`、`setCollapsed()` | 绑定示例/重新分析/导出/清空/折叠/关键词切换/目录点击/resize；`init` 默认折叠控制区、绑定「返回抓取」（优先原生桥 `close()`，浏览器退回 history）、刷新吸顶偏移、有预挂载数据则自动载入 |
 
 ### 5.3 导出
 
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
-| CSV 单元格安全 | `csvCell()` | 先中和公式注入（以 `= + - @ TAB CR` 开头前置单引号），再按需包裹双引号；顺序不可颠倒，否则会生成 `"=a,b"` 这类非法字段 |
-| 记录与行组装 | `buildExportRecords()`、`exportCells()`、`exportLine()`、`rankRangeText()`、`pickCols()` | 只导出实际存在区块的行；区块行留空 R / R 判定，混合榜填入 R 值；名次区间两端相同只显示一个名次；空解读转空字符串；`pickCols` 按区块 sheet 的列索引裁剪单元格（隐藏 R 两列） |
+| 记录与行组装 | `buildExportRecords()`、`exportCells()`、`numCell()`、`rankRangeText()`、`pickCols()` | 只导出实际存在区块的行；区块行留空 R / R 判定，混合榜填入 R 值；名次区间两端相同只显示一个名次；空解读转空字符串；`numCell` 把 TGI / S / P / 综合分 / 名次保留位数但返回 `number`，供 xlsx 写成数字单元格；`pickCols` 按区块 sheet 的列索引裁剪单元格（隐藏 R 两列） |
 | 进度节点 | `exportProgressNode()` | 在结果区顶部插入/更新导出进度卡片，完成后移除 |
 | 导出入口 | `exportCSV()` | 校验结果与令牌 → 生成 xlsx 字节 → 优先 `window.DyRankingBridge.exportCsv(base64, 文件名)` 交原生落盘；无桥时退回 Blob `<a download>`（1.5s 后释放 URL） |
-| xlsx 底层 | `utf8Bytes()`、`xmlEsc()`、`colLetter()`、`crc32()`、`putU16()`、`putU32()`、`zipStore()`、`bytesToBase64()` | UTF-8 编码与 XML 转义（剔除 XML 1.0 非法控制字符）；列号转字母；CRC32 与 ZIP 本地头/中央目录（STORED 不压缩）；base64 分块转换（8KB）避免大表字符串拼接卡顿 |
+| xlsx 底层 | `utf8Bytes()`、`xmlEsc()`、`colLetter()`、`CRC_TABLE`、`crc32()`、`putU16()`、`putU32()`、`zipStore()`、`bytesToBase64()` | UTF-8 编码与 XML 转义（剔除 XML 1.0 非法控制字符）；列号转字母；CRC32 查表（一次建表，比逐位运算快约 8 倍）与 ZIP 本地头/中央目录（STORED 不压缩）；base64 分块转换（8KB）避免大表字符串拼接卡顿 |
 
 ---
 
@@ -248,9 +247,9 @@
 | 转换构建 | `tools/build-pwa.js` | 读取 `app/src/main/assets/ranking.html`，仅在 `</head>` / `</body>` 前追加 PWA 元数据与启动脚本 → 输出 `pwa-dist/`（已 gitignore）。复制 `assets/scoring.js`（与 App 共用同一份算法，绝不另存副本）；注入 `sw.js` 缓存版本与用户脚本 `@version`；用 Node 内置 `zlib` 程序化生成图标（零依赖，CI 可复现）。源文件缺少 `</head>` / `</body>` / `scoring.js` 引用、模板缺少 `{kw}` 或 `__PAGE_URLS__` 注入点、`extract.js` 未导出 `window.__dyRun` 时直接失败 |
 | 构建内部函数 | `main()`、`emit()`、`readUtf8()`、`writeFile()`、`fail()`、`buildNumber()`、`appVersionBase()`、`fullVersion()`、`crc32()`、`pngChunk()`、`pngEncode()`、`inRoundRect()`、`lerp()`、`renderIcon()` | `main` 清理并重建 `pwa-dist/`，`emit` 逐文件写入并累计体积；`readUtf8` 读源文件、`writeFile` 自动建目录；`fail` 打印原因并以非零码退出（CI 立即失败）；版本三函数与 Gradle 同算法；PNG 部分为 IHDR/IDAT/IEND 手写编码 + 圆角矩形逐像素渲染（`inRoundRect` 判边界、`lerp` 取底色渐变） |
 | 页面 | `pwa-dist/index.html` | 与 Android 端同一份排名页，业务逻辑零改动；两端差异只有注入的标签（`dyrank-version`、theme-color、Apple standalone 系列 meta、manifest、apple-touch-icon、`web.css`）与底部 `web-boot.js` 启动脚本，改口径只需改 `ranking.html` 一处 |
-| 应用清单 | `pwa-src/manifest.webmanifest` | `name/short_name`（抖音指数综合排名 / 抖音指数排名）、`lang: zh-CN`、`start_url: ./` + `scope: ./`（GitHub Pages 子路径部署同样可用）、`display: standalone`、`orientation: portrait`、`background_color: #f5f7fa`、`theme_color: #2563eb`、192/512 `purpose: any` 图标 |
-| 离线缓存 | `pwa-src/sw.js` | `CACHE_NAME = dyrank-pwa-<版本>`（构建注入）；安装即预缓存 9 项：`./`、`index.html`、`scoring.js`、`web-boot.js`、`web.css`、`manifest.webmanifest`、三档图标；`install` 完成后 `skipWaiting()`，`activate` **只清 `dyrank-pwa-` 前缀的旧缓存**（同域可能还有其它 Pages 项目的缓存）并 `clients.claim()`；`fetch`：导航请求网络优先（**仅 `res.ok` 才回写 `index.html`**，离线回退缓存，无缓存返回 503 文本），同源静态资源缓存优先 + 后台更新，跨域请求原样放行，非 GET 不接管 |
-| 启动脚本 | `pwa-src/web-boot.js`（`byId`、`toast`、`formatSize`、`adaptNativeOnlyUI`、`hasLoadedData`、`mountImportCard`、`importFile`、`importFromClipboard`、`mountInstallHint`、`mountHelpButton`、`buildHelp`、`openHelp`、`closeHelp`、`registerServiceWorker`、`checkUpdate`） | ①`adaptNativeOnlyUI` 隐藏原生专属入口：「返回抓取」（依赖原生桥关闭 Activity）、「重新分析」（导入后无意义），放出「加载示例数据」；②`mountImportCard` 在控制区注入「选择 CSV 文件 / 粘贴 CSV」导入卡片，`importFile` 先做 **50MB 硬上限**（与页面 `MAX_UPLOAD_MB` 一致，超限直接拒绝，避免整个读进内存），再交给页面内置 `handleFile()`，复用同一条「编码校验 → `parseCsv`（内联 `parseCsvText`）→ 清洗 → 评分 → 渲染」链路，与原生注入使用同一个解析器；`importFromClipboard` 把剪贴板内容包装成 `File` 走同一链路，旧浏览器不支持 `File` 构造器时退回 `loadFromCsv(text, '剪贴板导入', '')`；③`mountInstallHint` 首次访问显示「添加到主屏幕」提示，关闭后写入 localStorage（隐私模式下不可用则每次展示）；④`registerServiceWorker` 在 `load` 后注册 SW，并在 `visibilitychange` 回前台时 `checkUpdate()`（`reg.update()`）；⑤改写首页空状态文案为导入引导；⑥`mountHelpButton` 顶栏「iPhone 用法」按钮 → `buildHelp` 底部弹层教程（添加主屏 / 安装抓取脚本 / 抓取并导入 / 离线 / 常见问题），`openHelp`/`closeHelp` 支持遮罩点击与 Esc 关闭 |
+| 应用清单 | `pwa-src/manifest.webmanifest` | `name/short_name`（抖音指数综合排名 / 抖音指数排名）、`lang: zh-CN`、`id: ./`（换地址时避免被识别成另一个应用）、`start_url: ./` + `scope: ./`（GitHub Pages 子路径部署同样可用）、`display: standalone`、`orientation: portrait`、`background_color: #f5f7fa`、`theme_color: #2563eb`、192/512 `purpose: any` 图标 |
+| 离线缓存 | `pwa-src/sw.js` | `CACHE_NAME = dyrank-pwa-<版本>`（构建注入）；安装即预缓存 8 项：`index.html`、`scoring.js`、`web-boot.js`、`web.css`、`manifest.webmanifest`、三档图标（`./` 与 `index.html` 同文档，不再重复缓存）；预缓存逐项 `put`，单个资源 404 不会让整次安装失败；`install` 完成后 `skipWaiting()`，`activate` **只清 `dyrank-pwa-` 前缀的旧缓存**（同域可能还有其它 Pages 项目的缓存）并 `clients.claim()`；`fetch`：导航请求网络优先（**仅 `res.ok` 才回写 `index.html`**，`cache.put` 均包在 `waitUntil` 里避免 SW 提前终止丢更新；离线回退缓存，无缓存返回 504），同源静态资源缓存优先 + 后台更新（缓存未命中且断网返回 504，不再 `respondWith(undefined)`），跨域请求原样放行，非 GET 不接管 |
+| 启动脚本 | `pwa-src/web-boot.js`（`byId`、`toast`、`formatSize`、`adaptNativeOnlyUI`、`hasLoadedData`、`mountImportCard`、`importFile`、`importFromClipboard`、`mountInstallHint`、`mountHelpButton`、`buildHelp`、`openHelp`、`closeHelp`、`registerServiceWorker`、`checkUpdate`） | ①`adaptNativeOnlyUI` 隐藏原生专属入口：「返回抓取」（依赖原生桥关闭 Activity）、「重新分析」（导入后无意义），放出「加载示例数据」；②`mountImportCard` 在控制区注入「选择 CSV 文件 / 粘贴 CSV」导入卡片，`importFile` 先做 **50MB 硬上限**（与页面 `MAX_UPLOAD_MB` 一致，超限直接拒绝，避免整个读进内存），再交给页面内置 `handleFile()`，复用同一条「编码校验 → `parseCsv`（内联 `parseCsvText`）→ 清洗 → 评分 → 渲染」链路，与原生注入使用同一个解析器，并以页面真实状态 `state.status === 'success'` 判定本次导入是否成功（不再用导出按钮的 disabled 状态误判）；`importFromClipboard` 把剪贴板内容包装成 `File` 走同一链路，旧浏览器不支持 `File` 构造器时退回 `loadFromCsv(text, '剪贴板导入', '')`；③`mountInstallHint` 首次访问显示「添加到主屏幕」提示，关闭后写入 localStorage（隐私模式下不可用则每次展示）；④`registerServiceWorker` 在 `load` 后注册 SW，并在 `visibilitychange` 回前台时 `checkUpdate()`（`reg.update()`）；⑤改写首页空状态文案为导入引导；⑥`mountHelpButton` 顶栏「iPhone 用法」按钮 → `buildHelp` 底部弹层教程（添加主屏 / 安装抓取脚本 / 抓取并导入 / 离线 / 常见问题），`openHelp`/`closeHelp` 支持遮罩点击与 Esc 关闭 |
 | 补充样式 | `pwa-src/web.css` | 导入卡片、提示条、帮助弹层；并为 `#backBtn[hidden]` / `#reanalyzeBtn[hidden]` / `#sampleBtn[hidden]` 补显式 `display:none`——`.btn` 的 `inline-flex` 会盖掉浏览器对 `[hidden]` 的默认样式 |
 | 图标 | 构建期生成 `icons/icon-192.png`、`icon-512.png`、`icon-180.png` | PNG 编码手写（IHDR/IDAT/IEND + CRC32），无需 canvas 或三方库；manifest 用透明圆角版（`renderIcon(size, true)`），apple-touch-icon 用满幅方形（`false`）交由 iOS 自行切圆角 |
 | 用户脚本（网页端抓取） | `pwa-src/userscript-controller.js` → 构建产物 `pwa-dist/douyin-index-extract.user.js` | 网页端唯一的抓取形态：脚本注入 `creator.douyin.com` 页面内（同源），直接复用 `assets/extract.js` 的采集实现（由构建脚本原样拼接，不复制逻辑）；控制器提供 `window.DyBridge` 的网页版实现（`onLog` / `onResult` / `onError`）、右下角「抓取数据」悬浮按钮（Shadow DOM 隔离样式）、抓完后的「复制 CSV / 下载 CSV / 打开排名页」、以及「打开页面」四入口——输入关键词后一键直达关键词分析 / 达人搜索 / 视频搜索 / 话题搜索（URL 构造与 Android 端 `AppUrls` 一致）；`@match` 限定 creator 域、`@grant none`、`@run-at document-idle`、`@noframes`、`@updateURL` / `@downloadURL` 指向 Pages 上的同一文件 |
@@ -309,8 +308,8 @@ https://yejiawei19991118.github.io/douyin-index-tool/douyin-index-extract.user.j
 | 清单拉取 | `fetchAndVerify()`、`MANIFEST_SOURCES` | 逐源尝试：GitHub contents API（`Accept: application/vnd.github.raw`，内容最新）→ gh-proxy → jsDelivr（testingcf）/ jsdmirror 镜像（约 12h 缓存，兜底）→ raw.githubusercontent.com（国内常年不可达，最后兜底）；单源 5s 连接 / 8s 读取、整体 25s 预算；首个验签通过者生效并写缓存 |
 | 清单验签 | `parseManifest()`、`canonicalManifestString()`、`Ed25519` | 只认 `ver=2`；规范化串 = `ver\nupdated\nrev\n<卡片行>\n<吊销列表>`（卡片行按 `mc + \0 + card` 排序，内容 `card\|mc\|note\|exp`）；内置公钥（base32 52 字符）做 RFC 8032 Ed25519 验签，失败一律不采纳 |
 | 授权判定 | `decide()` | 顺序：已吊销 → 不在清单 → 一卡一机不匹配 → 已过期（`YYYY-MM-DD` 早于今天）→ 离线凭证超 14 天 |
-| 离线凭证 | `KEY_CACHE`、`credFresh()`、`saveCache()` | 验签通过的清单 + 拉取时间缓存本地；超过 14 天必须联网刷新；系统时间回拨按过期处理 |
-| 激活 / 退出 | `activate()`、`deactivate()` | 联网失败时退回缓存清单（离线凭证）；成功后写入卡密 / 机器码 / 有效期 |
+| 离线凭证 | `KEY_CACHE`、`credFresh()`、`saveCache()`、`loadCachedManifest()` | 验签通过的清单 + 拉取时间缓存本地；超过 14 天必须联网刷新；系统时间回拨按过期处理；`loadCachedManifest` 在进程内缓存已验签对象（缓存串未变时直接复用），避免每次启动都在主线程重做 Ed25519 验签 |
+| 激活 | `activate()` | 联网失败时退回缓存清单（离线凭证）；成功后写入卡密 / 机器码 / 有效期 |
 | 后台刷新 | `refreshIfStaleAsync()` | 缓存超过 24h 时静默拉取一次，让在线吊销与有效期变更尽快生效 |
 | 激活界面 | `ActivationActivity` | 展示并复制本机机器码、输入卡密、激活按钮、状态与提示文案；成功后进入主界面；未激活时也会走 `Updater` 后台静默更新，避免卡在旧版本无法拿到修复包；`AndroidManifest.xml` 中 `android:exported="false"` |
 

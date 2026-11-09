@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 卡密授权（一卡一机）：与「卡密生成器」（github.com/yejiawei19991118/lmt-cards）同一套清单制式。
@@ -83,12 +84,10 @@ public final class LicenseManager {
     public static final class Result {
         public final boolean ok;
         public final String msg;
-        public final String exp;
 
-        Result(boolean ok, String msg, String exp) {
+        Result(boolean ok, String msg) {
             this.ok = ok;
             this.msg = msg;
-            this.exp = exp;
         }
     }
 
@@ -153,29 +152,24 @@ public final class LicenseManager {
      */
     public static Result activate(Context ctx, String input) {
         String card = normalize(input);
-        if (card.isEmpty()) return new Result(false, "请输入卡密", "");
-        if (!cardFormatOk(card)) return new Result(false, "卡密格式不正确（应为 20 位字母数字）", "");
+        if (card.isEmpty()) return new Result(false, "请输入卡密");
+        if (!cardFormatOk(card)) return new Result(false, "卡密格式不正确（应为 20 位字母数字）");
 
         Manifest m = fetchAndVerify(ctx);
         boolean online = m != null;
         if (m == null) m = loadCachedManifest(ctx);
         if (m == null) {
-            return new Result(false, "无法获取卡密清单，请检查网络后重试", "");
+            return new Result(false, "无法获取卡密清单，请检查网络后重试");
         }
         Decision d = decide(ctx, card, m);
-        if (!d.ok) return new Result(false, d.msg, d.exp);
+        if (!d.ok) return new Result(false, d.msg);
 
         prefs(ctx).edit()
                 .putString(KEY_CARD, card)
                 .putString(KEY_MC, machineCodeRaw(ctx))
                 .putString(KEY_EXP, d.exp == null ? "" : d.exp)
                 .apply();
-        return new Result(true, "激活成功" + (online ? "（在线校验）" : "（离线凭证）"), d.exp);
-    }
-
-    /** 退出激活（清掉本地记录，不清清单缓存）。 */
-    public static void deactivate(Context ctx) {
-        prefs(ctx).edit().remove(KEY_CARD).remove(KEY_MC).remove(KEY_EXP).apply();
+        return new Result(true, "激活成功" + (online ? "（在线校验）" : "（离线凭证）"));
     }
 
     /** 清单缓存超过 24 小时就后台静默刷新一次，让在线吊销与有效期变更尽快生效。 */
@@ -195,6 +189,7 @@ public final class LicenseManager {
     private static final class Decision {
         boolean ok;
         String msg = "";
+        /** 卡密有效期（写进本地记录，供 isActivated 纯本地判断是否过期）。 */
         String exp = "";
     }
 
@@ -396,20 +391,31 @@ public final class LicenseManager {
         return ageMs(ctx) <= CRED_TTL_DAYS * 86400000L;
     }
 
-    /** 载入缓存清单并重新验签；验签不过返回 null。 */
+    /**
+     * 载入缓存清单并重新验签；验签不过返回 null。
+     * 缓存串未变时复用上次已验签的对象：Ed25519 验签是两次 BigInteger 标量乘，
+     * 每次启动都重算会在低端机上明显拖慢首屏。
+     */
     private static Manifest loadCachedManifest(Context ctx) {
         try {
             String raw = prefs(ctx).getString(KEY_CACHE, "");
             if (raw.isEmpty()) return null;
+            if (raw.equals(sCachedRaw) && sCachedManifest != null) return sCachedManifest;
             String data = new JSONObject(raw).optString("data", "");
             if (data.isEmpty()) return null;
             Manifest m = parseManifest(data);
             if (m == null || !m.verified) return null;
+            sCachedRaw = raw;
+            sCachedManifest = m;
             return m;
         } catch (Throwable t) {
             return null;
         }
     }
+
+    /** 进程内清单缓存（仅缓存验签通过的结果，值不可变，可安全跨线程发布）。 */
+    private static volatile String sCachedRaw = "";
+    private static volatile Manifest sCachedManifest;
 
     private static SharedPreferences prefs(Context ctx) {
         return ctx.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
@@ -417,8 +423,11 @@ public final class LicenseManager {
 
     // ===== 编解码 / 派生工具 =====
 
+    /** 卡密 / 机器码 / 签名只保留数字与大写字母；清单解析时会调用多次，正则预编译。 */
+    private static final Pattern NON_ALNUM = Pattern.compile("[^0-9A-Z]");
+
     static String normalize(String code) {
-        return code == null ? "" : code.toUpperCase(Locale.ROOT).replaceAll("[^0-9A-Z]", "");
+        return code == null ? "" : NON_ALNUM.matcher(code.toUpperCase(Locale.ROOT)).replaceAll("");
     }
 
     /** 卡密格式：随机 20 字符字母数字。 */

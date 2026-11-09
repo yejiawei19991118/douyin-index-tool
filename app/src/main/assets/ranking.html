@@ -1,4 +1,5 @@
-<html lang="zh-CN" data-trae-theme="light"><head>
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>目标关键词人群特征综合排名工具</title>
@@ -265,7 +266,6 @@ const ENCODING_RATIO_MAX = 0.005;
 const RANK_DISPLAY_LIMIT = 100;
 const LIST_TRUNCATE = 20;
 const ANOMALY_SAMPLE_MAX = 20;
-const EXPORT_PROGRESS_ROWS = 5000;
 const KEYWORD_NULL_RATIO_ALERT = 0.3;
 const SEP = '\u0001';
 const CONTENT_BLOCK = '用户内容浏览分布';
@@ -316,7 +316,6 @@ function deriveKeywordFromName(name) {
 const state = {
   status: 'idle',
   file: null,
-  parsed: null,
   hasKeywordField: false,
   keywords: [],
   currentKeyword: '',
@@ -327,7 +326,6 @@ const state = {
   sortState: new Map(),
   generation: 0,
   collapsed: true,
-  parsing: null,
   activeReader: null,
   tableRegistry: new Map(),
   domIdMap: new Map(),
@@ -428,14 +426,6 @@ function cellToText(v, ctx) {
   }
 }
 
-function normalizeText(v, ctx) {
-  return cellToText(v, ctx);
-}
-
-function normalizeNumericRaw(v) {
-  return v;
-}
-
 /* 数值解析固定流水线：去空白/千分位 → 记录 %/％ 尾缀（转半角之前）→ 全角转半角 → 去尾部 % → 严格正则 → parseFloat */
 function parseNumericString(v) {
   const raw = v === null || v === undefined ? '' : String(v);
@@ -458,19 +448,6 @@ function err(code, message, detail) {
 }
 
 /* ============================ 文件读取与解析 ============================ */
-let lastProgressAt = 0;
-/* 进度条 DOM 更新节流：worker 的 progress 事件可能非常密集，避免高频布局抖动 */
-function updateParseProgress(cursor, total) {
-  const now = Date.now();
-  if (now - lastProgressAt < 100) return;
-  lastProgressAt = now;
-  const bar = document.querySelector('#results .progress-bar');
-  if (bar && total > 0) {
-    const pct = Math.min(99, Math.round(cursor / total * 100));
-    bar.style.width = pct + '%';
-  }
-}
-
 function readArrayBuffer(file) {
   return new Promise(function (resolve, reject) {
     const fr = new FileReader();
@@ -502,11 +479,6 @@ function checkEncoding(info, kind) {
       '检测到非 UTF-8 编码字符，请将 ' + (kind === 'csv' ? 'CSV' : 'JSON') + ' 另存为 UTF-8 编码后重试。');
   }
   return null;
-}
-
-function papaRun(text, useWorker) {
-  // 已废弃：CSV 解析改用内联 parseCsvText，不再依赖 PapaParse。
-  return Promise.resolve({ workerFailed: true });
 }
 
 async function parseCsv(text) {
@@ -996,15 +968,6 @@ function computeR(record, parentInfo) {
 }
 
 /* ============================ 榜单计算 ============================ */
-function rankingComparator(a, b) {
-  if (b.composite !== a.composite) return b.composite - a.composite;
-  if (b.share !== a.share) return b.share - a.share;
-  if (b.tgi !== a.tgi) return b.tgi - a.tgi;
-  const c = collator().compare(a.name, b.name);
-  if (c) return c;
-  return a._rowIndex - b._rowIndex;
-}
-
 function interpretationOf(row, isMixed) {
   if (!row.qCode) return '—';
   if (isMixed && row.Rstatus === '高于父类' && isFiniteNumber(row.R)) {
@@ -1190,7 +1153,7 @@ function buildKeywordResult(keyword) {
     mixed: mixedList,
     unavailable: unavailable,
     superCount: superCount,
-    hasMixed: mixedList.n >= 2
+    hasMixed: mixedList.n >= 1
   };
 }
 
@@ -1513,21 +1476,6 @@ function clearError() {
 function setStatus(status) {
   state.status = status;
   syncUI();
-}
-
-function fileSizeText(file) {
-  if (!file) return '等待数据';
-  if (file.sample) return '示例数据（内置） · 内置';
-  const size = file.size;
-  if (size < 1024) return file.name + ' · ' + size + ' B';
-  if (size < 1024 * 1024) return file.name + ' · ' + (size / 1024).toFixed(1) + ' KB';
-  return file.name + ' · ' + (size / 1024 / 1024).toFixed(2) + ' MB';
-}
-
-function currentKeywordLabel() {
-  if (!state.clean) return '未选择关键词';
-  if (!state.hasKeywordField) return state.clean.derivedKeyword || SINGLE_KW;
-  return state.currentKeyword || '—';
 }
 
 function currentResult() {
@@ -2040,7 +1988,6 @@ function analyzeKeyword(kw, opts) {
 }
 
 function processTable(table) {
-  state.parsed = table;
   if (!table.headerRow || table.headerRow.length === 0 ||
       table.headerRow.every(function (h) { return blankText(h); })) {
     showError('未检测到有效表头，请检查文件第一行是否为字段名。');
@@ -2079,7 +2026,6 @@ function processTable(table) {
 }
 
 function resetForNewData() {
-  state.parsed = null;
   state.clean = null;
   state.hasKeywordField = false;
   state.keywords = [];
@@ -2203,16 +2149,12 @@ function clearAll() {
   setStatus('idle');
 }
 
-/* ============================ 导出 CSV ============================ */
-function csvCell(v) {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'number' && !isFinite(v)) return '';
-  let s = String(v);
-  /* 先中和公式注入（前置单引号），再按需包裹双引号；
-     顺序反了会生成 '"=a,b"' 这类非法 CSV 字段 */
-  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-  if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
-  return s;
+/* ============================ 导出（xlsx） ============================ */
+/* 导出到 Excel 的数值列：保留位数但保持 number 类型，便于在 Excel 里直接排序 / 求和 */
+function numCell(v, digits) {
+  if (!isFiniteNumber(v)) return '';
+  const p = Math.pow(10, digits);
+  return Math.round(v * p) / p;
 }
 
 function buildExportRecords(result) {
@@ -2224,13 +2166,13 @@ function buildExportRecords(result) {
         _sheet: list.name,
         name: row.name,
         share: formatShare(row.share),
-        tgi: numText(row.tgi),
+        tgi: numCell(row.tgi, 2),
         R: '',
         Rstatus: '',
-        S: list.hasRank ? fmt(row.S, 1) : '',
-        P: list.hasRank ? fmt(row.P, 1) : '',
-        composite: list.hasRank ? fmt(row.composite, 2) : '',
-        rank: list.hasRank && row.rank !== null ? String(row.rank) : '',
+        S: list.hasRank ? numCell(row.S, 1) : '',
+        P: list.hasRank ? numCell(row.P, 1) : '',
+        composite: list.hasRank ? numCell(row.composite, 2) : '',
+        rank: list.hasRank && isFiniteNumber(row.rank) ? row.rank : '',
         rankLo: list.hasRank ? row.rankLo : null,
         rankHi: list.hasRank ? row.rankHi : null,
         quad: list.hasRank ? row.qText + (list.smallSample ? '（样本较少）' : '') : '',
@@ -2244,13 +2186,13 @@ function buildExportRecords(result) {
         _sheet: '二级混合总榜',
         name: row.name,
         share: formatShare(row.share),
-        tgi: numText(row.tgi),
+        tgi: numCell(row.tgi, 2),
         R: isFiniteNumber(row.R) ? fmt(row.R, 1) + '%' : '',
         Rstatus: row.Rstatus || '',
-        S: fmt(row.S, 1),
-        P: fmt(row.P, 1),
-        composite: fmt(row.composite, 2),
-        rank: row.rank === null ? '' : String(row.rank),
+        S: numCell(row.S, 1),
+        P: numCell(row.P, 1),
+        composite: numCell(row.composite, 2),
+        rank: isFiniteNumber(row.rank) ? row.rank : '',
         rankLo: row.rankLo,
         rankHi: row.rankHi,
         quad: row.qText + (result.mixed.smallSample ? '（样本较少）' : ''),
@@ -2273,10 +2215,6 @@ function exportCells(rec) {
   var range = rankRangeText(rec);
   return [rec.name, rec.share, rec.tgi, rec.R, rec.Rstatus,
     rec.S, rec.P, rec.composite, rec.rank, range, rec.quad, rec.interp];
-}
-
-function exportLine(rec) {
-  return exportCells(rec).map(csvCell).join(',');
 }
 
 /* ---------------- 多 sheet Excel（OOXML .xlsx）导出 ---------------- */
@@ -2319,6 +2257,11 @@ function xlsxSheetXml(headers, rows) {
       var v = cells[j];
       if (v === null || v === undefined) v = '';
       if (typeof v === 'number' && !isFinite(v)) v = '';
+      if (typeof v === 'number') {
+        /* 数值列写成真正的数字单元格：Excel 里可直接排序 / 求和，且不会按文本规则比较（10 < 9） */
+        xml += '<c r="' + colLetter(j + 1) + r + '"><v>' + v + '</v></c>';
+        continue;
+      }
       var sv = String(v);
       if (/^[=+\-@\t\r]/.test(sv)) sv = "'" + sv; /* 公式注入防护 */
       xml += '<c r="' + colLetter(j + 1) + r + '" t="inlineStr"><is><t xml:space="preserve">'
@@ -2330,14 +2273,21 @@ function xlsxSheetXml(headers, rows) {
   return xml;
 }
 
-/* CRC32（IEEE 802.3），用于 ZIP 校验和 */
+/* CRC32（IEEE 802.3）查表，用于 ZIP 校验和：表只建一次，比逐位运算快约 8 倍 */
+var CRC_TABLE = (function () {
+  var t = new Uint32Array(256);
+  for (var i = 0; i < 256; i++) {
+    var c = i;
+    for (var j = 0; j < 8; j++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1));
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+
 function crc32(bytes) {
   var crc = 0xFFFFFFFF;
   for (var i = 0; i < bytes.length; i++) {
-    crc ^= bytes[i];
-    for (var j = 0; j < 8; j++) {
-      crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
-    }
+    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ bytes[i]) & 0xFF];
   }
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }

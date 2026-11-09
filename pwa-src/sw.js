@@ -14,7 +14,6 @@ const CACHE_NAME = 'dyrank-pwa-__CACHE_VERSION__';
 
 /* 相对路径以 sw.js 所在目录为基准（GitHub Pages 子路径部署同样适用） */
 const PRECACHE = [
-  './',
   'index.html',
   'scoring.js',
   'web-boot.js',
@@ -28,7 +27,14 @@ const PRECACHE = [
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(function (cache) { return cache.addAll(PRECACHE); })
+      .then(function (cache) {
+        // 逐个预缓存：单个资源 404 不应让整次安装失败（否则旧 SW 会一直驻留）。
+        return Promise.all(PRECACHE.map(function (url) {
+          return fetch(url).then(function (res) {
+            return res && res.ok ? cache.put(url, res) : null;
+          }).catch(function () { return null; });
+        }));
+      })
       .then(function () { return self.skipWaiting(); })
   );
 });
@@ -58,7 +64,9 @@ self.addEventListener('fetch', function (event) {
           // 只有成功响应才写进离线壳，否则 404/5xx 错误页会被当成「离线可用页面」长期缓存
           if (res && res.ok) {
             const copy = res.clone();
-            caches.open(CACHE_NAME).then(function (cache) { cache.put('index.html', copy); });
+            // waitUntil 包住写缓存：否则响应交付后 SW 可能被终止，离线壳更新丢失
+            event.waitUntil(caches.open(CACHE_NAME)
+              .then(function (cache) { return cache.put('index.html', copy); }));
           }
           return res;
         })
@@ -82,10 +90,14 @@ self.addEventListener('fetch', function (event) {
       const network = fetch(req).then(function (res) {
         if (res && res.status === 200) {
           const copy = res.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(req, copy); });
+          event.waitUntil(caches.open(CACHE_NAME)
+            .then(function (cache) { return cache.put(req, copy); }));
         }
         return res;
-      }).catch(function () { return cached; });
+      }).catch(function () {
+        // 缓存未命中且断网时必须返回一个合法 Response，respondWith(undefined) 会直接抛错。
+        return cached || new Response('', { status: 504, statusText: 'Offline' });
+      });
       return cached || network;
     })
   );

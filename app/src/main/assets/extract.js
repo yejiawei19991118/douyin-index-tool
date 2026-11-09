@@ -89,8 +89,9 @@
   }
 
   // 收集页面上所有 lightcharts 图表（canvas + 其对应的 tooltip 兄弟节点 + 所属区块）
-  function getCharts() {
-    var marks = findTitleMarks();
+  // marks 可由调用方传入，避免同一次抓取里重复做全文档标题扫描。
+  function getCharts(marks) {
+    marks = marks || findTitleMarks();
     var out = [];
     var cs = document.querySelectorAll('.lightcharts-container');
     for (var i = 0; i < cs.length; i++) {
@@ -217,7 +218,7 @@
         cur = cur.parentElement;
       }
       if (target) break;
-      if (!target) target = btns[i];
+      target = btns[i];
     }
     if (!target) return false;
     try { target.click(); } catch (e) { return false; }
@@ -227,9 +228,14 @@
 
   async function extractRegion() {
     var result = {};
+    var lastTab = REGION_TABS[0];
     for (var t = 0; t < REGION_TABS.length; t++) {
       var tab = REGION_TABS[t];
-      await clickTab(tab); // 点不动也继续按当前视图尝试
+      var switched = await clickTab(tab);
+      // 页签切不过去（页面没有该页签 / 点击失败）时跳过后续维度：
+      // 否则会把同一份表格重复写到多个维度名下，产生重复行与维度错配。
+      if (!switched && t > 0) continue;
+      if (switched) lastTab = tab;
       await sleep(900);
       var rows = parseRegionTable(document.body.innerText.split('\n'));
       if (!rows.length) {
@@ -240,8 +246,10 @@
       if (rows.length) result[tab] = rows;
     }
     if (!Object.keys(result).length) {
+      // 全部页签都失败时，把当前视图的数据归到「最后成功切换过去的维度」，
+      // 而不是写一个排名页不认识的「当前视图」——那样会被整段丢弃。
       var rows2 = parseRegionTable(document.body.innerText.split('\n'));
-      if (rows2.length) result['当前视图'] = rows2;
+      if (rows2.length) result[lastTab] = rows2;
     }
     return result;
   }
@@ -462,7 +470,8 @@
             if (rm) ratio = rm[1] + '%';
           }
           if (ratio == null && /^(\d+(?:\.\d+)?)%$/.test(t)) ratio = t;
-          if (tgi == null && /^(\d+(?:\.\d+)?)$/.test(t)) tgi = t;
+          // TGI 是至少两位的数值；限制位数可避免把表格里的排名序号「1」误当成 TGI。
+          if (tgi == null && /^\d{2,}(?:\.\d+)?$/.test(t)) tgi = t;
         }
         if (ratio || tgi) out.push({ name: names[k], ratio: ratio || '', tgi: tgi || '' });
       }
@@ -730,9 +739,18 @@
         // 关键词页与话题页共用同一套页头：筛选行上的主题 chip（.filterDate-* 内的 .tag-*）
         // 显示的就是当前关键词 / 话题名，与页面所见一致；取不到再回退 URL 参数
         //（话题的 topic 参数是数字 ID，仅作兜底）。
-        var chip = document.querySelector('[class*="filterDate-"] [class*="tag-"]');
-        var tn = textOf(chip).replace(/[×✕⨯]/g, '').trim();
-        if (tn) return tn;
+        // 同一个筛选容器里既有主题 chip 也有日期 chip（近7天 / 2024-01 …），
+        // 优先取与 URL keyword 完全一致的，其次取第一个不像日期的。
+        var want = page === 'keyword' ? (u.searchParams.get('keyword') || '') : '';
+        var chips = document.querySelectorAll('[class*="filterDate-"] [class*="tag-"]');
+        var pick = '';
+        for (var ci = 0; ci < chips.length; ci++) {
+          var tn = textOf(chips[ci]).replace(/[×✕⨯]/g, '').trim();
+          if (!tn) continue;
+          if (want && tn === want) { pick = tn; break; }
+          if (!pick && !/^\d{4}[-/.]\d{1,2}|近\d+天|最近\d+天|^\d+天|今天|昨天|本周|本月/.test(tn)) pick = tn;
+        }
+        if (pick) return pick;
         if (page === 'keyword') {
           // URLSearchParams 已解码，不能再 decodeURIComponent（含 % 的关键词会抛错）
           return u.searchParams.get('keyword') || '';
@@ -836,7 +854,7 @@
     // 诊断快照：把「脚本实际看到了什么」如实回传。识别失败时不必再猜，直接看这份快照即可
     // 定位是标题没匹配上、图表顺序不对，还是性别区块文本结构与预期不同。
     var marks = findTitleMarks();
-    var charts = getCharts();
+    var charts = getCharts(marks);
     var debugSections = charts.map(function (c) {
       var r = null;
       try { r = c.canvas.getBoundingClientRect(); } catch (e) { r = null; }
@@ -902,17 +920,7 @@
       pageType: page,
       keyword: name,
       generatedAt: new Date().toISOString(),
-      chartCount: charts.length,
-      debugSections: debugSections,
       debug: debug,
-      counts: {
-        region: (sections['地域分布'] && Object.keys(sections['地域分布']).length) || 0,
-        age: rowCount(sections['年龄分布']),
-        gender: rowCount(sections['性别分布']),
-        interest: rowCount(sections['用户内容浏览分布']),
-        phoneBrand: rowCount(sections['手机品牌分布']),
-        phonePrice: rowCount(sections['手机价格分布'])
-      },
       rowCount: totalRows,
       csv: csv
     };
@@ -939,26 +947,37 @@
   // （返回 unknown），等 DOM 渲染稳定后再检测一次就能拿到正确页型。
   (function watch() {
     var ticks = 0;
-    var timer = setInterval(function () {
-      ticks++;
-      var ready = false;
+    var lastUrl = '';
+    var reported = false;
+    setInterval(function () {
       try {
-        var txt = document.body ? document.body.innerText : '';
-        var hasCanvas = document.querySelectorAll('.lightcharts-container canvas').length > 0;
-        ready = hasCanvas && /地域分布|年龄分布|性别分布|用户内容浏览分布|手机品牌分布|手机价格分布/.test(txt);
-      } catch (e) { ready = false; }
-      var page = detectPage();
-      if (ready) {
-        clearInterval(timer);
-        if (page !== 'unknown') {
-          bridge('onLog', pageLabel(page) + '页已就绪，点底部「开始抓取」提取数据');
-        } else {
-          bridge('onLog', '页面已就绪，点底部「开始抓取」提取数据');
+        // SPA 路由切换后重新探测一次；同一页面就绪后不再每秒重扫整页 innerText。
+        if (location.href !== lastUrl) {
+          lastUrl = location.href;
+          reported = false;
+          ticks = 0;
         }
-      } else if (ticks > 300) {
-        clearInterval(timer);
-        bridge('onLog', '未检测到分析区块，请确认已进入对应分析页');
-      }
+        if (reported) return;
+        ticks++;
+        var ready = false;
+        try {
+          var txt = document.body ? document.body.innerText : '';
+          var hasCanvas = document.querySelectorAll('.lightcharts-container canvas').length > 0;
+          ready = hasCanvas && /地域分布|年龄分布|性别分布|用户内容浏览分布|手机品牌分布|手机价格分布/.test(txt);
+        } catch (e) { ready = false; }
+        var page = detectPage();
+        if (ready) {
+          reported = true;
+          if (page !== 'unknown') {
+            bridge('onLog', pageLabel(page) + '页已就绪，点底部「开始抓取」提取数据');
+          } else {
+            bridge('onLog', '页面已就绪，点底部「开始抓取」提取数据');
+          }
+        } else if (ticks > 300) {
+          reported = true;
+          bridge('onLog', '未检测到分析区块，请确认已进入对应分析页');
+        }
+      } catch (e) { /* 忽略探测异常，下一轮继续 */ }
     }, 1000);
   })();
 })();

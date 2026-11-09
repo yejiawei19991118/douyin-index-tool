@@ -24,7 +24,9 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
@@ -163,34 +165,48 @@ public class RankingActivity extends Activity {
                         ? Base64.decode(text, Base64.DEFAULT)
                         : text.getBytes(StandardCharsets.UTF_8);
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    Uri target = findDownloadsFile(fileName);
-                    boolean reused = target != null;
-                    ContentValues pending = new ContentValues();
-                    pending.put(MediaStore.MediaColumns.IS_PENDING, 1);
-                    if (!reused) {
-                        ContentValues values = new ContentValues();
-                        values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
-                        values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-                        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
-                        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-                        target = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-                        if (target == null) throw new Exception("无法在下载目录创建文件");
-                    } else {
-                        // 覆盖已有文件时先标回 pending，避免用户看到写了一半的文件；
-                        // 失败时只还原 pending 标记，绝不删除上一份已导出的完整结果。
-                        getContentResolver().update(target, pending, null, null);
+                    // 先落临时文件：只有数据完整写成功后才去动下载目录里的同名文件，
+                    // 避免写到一半（空间不足等）把上一份完整结果截断成半截文件。
+                    File tmp = File.createTempFile("export", ".part", getCacheDir());
+                    try {
+                        try (FileOutputStream fos = new FileOutputStream(tmp)) {
+                            fos.write(data);
+                            fos.flush();
+                        }
+                        Uri target = findDownloadsFile(fileName);
+                        boolean reused = target != null;
+                        ContentValues pending = new ContentValues();
+                        pending.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                        if (!reused) {
+                            ContentValues values = new ContentValues();
+                            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                            values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+                            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+                            target = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                            if (target == null) throw new Exception("无法在下载目录创建文件");
+                        } else {
+                            // 覆盖已有文件时先标回 pending，避免用户看到写了一半的文件。
+                            getContentResolver().update(target, pending, null, null);
+                        }
+                        try (InputStream in = new FileInputStream(tmp);
+                             OutputStream os = getContentResolver().openOutputStream(target, "wt")) {
+                            if (os == null) throw new Exception("无法写入目标文件");
+                            byte[] buf = new byte[8192];
+                            int n;
+                            while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                            os.flush();
+                        } catch (Exception e) {
+                            // 已经写坏的半截文件直接删掉，而不是留一个「看起来完整」的坏文件。
+                            getContentResolver().delete(target, null, null);
+                            throw e;
+                        }
+                        getContentResolver().update(target, doneValues(), null, null);
+                        toast("已导出到系统下载目录：" + fileName);
+                    } finally {
+                        //noinspection ResultOfMethodCallIgnored
+                        tmp.delete();
                     }
-                    try (OutputStream os = getContentResolver().openOutputStream(target, "wt")) {
-                        if (os == null) throw new Exception("无法写入目标文件");
-                        os.write(data);
-                        os.flush();
-                    } catch (Exception e) {
-                        if (reused) getContentResolver().update(target, doneValues(), null, null);
-                        else getContentResolver().delete(target, null, null);
-                        throw e;
-                    }
-                    getContentResolver().update(target, doneValues(), null, null);
-                    toast("已导出到系统下载目录：" + fileName);
                 } else {
                     File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
                     if (dir == null) throw new Exception("外部存储不可用");
