@@ -9,7 +9,7 @@
 
 | 分组 | 文件 | 说明章节 |
 | --- | --- | --- |
-| Android 源码（7） | `MainActivity.java`、`RankingActivity.java`、`Updater.java`、`ApkFileProvider.java`、`AppUrls.java`、`CsvUtils.java`、`VersionUtils.java` | 一、二、三、五 |
+| Android 源码（9） | `MainActivity.java`、`RankingActivity.java`、`ActivationActivity.java`、`LicenseManager.java`、`Updater.java`、`ApkFileProvider.java`、`AppUrls.java`、`CsvUtils.java`、`VersionUtils.java` | 一、二、三、五、八 |
 | 前端资产（3） | `assets/extract.js`、`assets/ranking.html`、`assets/scoring.js` | 四、五 |
 | 资源与清单（7） | `AndroidManifest.xml`、`res/values/strings.xml`、`colors.xml`、`themes.xml`、`res/drawable/ic_launcher_foreground.xml`、`res/mipmap-anydpi-v26/ic_launcher.xml`、`ic_launcher_round.xml` | 三、六 |
 | 单元测试（3） | `AppUrlsTest.java`、`CsvUtilsTest.java`、`VersionUtilsTest.java` | 二 |
@@ -25,7 +25,7 @@
 | --- | --- | --- |
 | 配置常量 | `DEFAULT_KEYWORD`、`DESKTOP_UA` | 默认关键词「穿搭」；桌面版 Chrome UA（各分析页为桌面端页面，需桌面 UA 才能拿到全部区块）。目标地址构造见 `AppUrls` |
 | 启动期兼容注入 | `SVG_CLASSNAME_POLYFILL`、`STUCK_PAGE_RECOVERY`、`POSTROBOT_READY_SEED` | 均在 `onPageStarted` 注入、早于页面自身 JS：①修正 `SVGElement.className` 返回 `SVGAnimatedString` 导致渲染管线抛错卡在「加载中」；②监听 `ChunkLoadError` / `loadable-components` 失败与「body 长期只含加载中」三类信号触发 `reload()`，用 `sessionStorage` 做 45s 去重防死循环；③把 post-robot 父窗口 `readyPromise` 预热为 resolved，修复顶层 WebView 点开视频卡片后永久「加载中」 |
-| 布局骨架 | `onCreate` | 纵向四段：模式切换 chips / 顶部输入栏 / WebView / 底部控制区 |
+| 布局骨架 | `onCreate` | 纵向四段：模式切换 chips / 顶部输入栏 / WebView / 底部控制区；**进入前先过卡密闸门**（见「八、卡密授权」） |
 | 模式切换组件 | `MODE_*`、`MODE_LABELS`、`MODE_HINTS`、`modeChips`、`setMode()` | 输入框上方一行单选 chips：关键词（默认）/ 达人 / 视频 / 话题；选中态主色实心，未选描边；切换只更新选中态与输入框 hint，不自动跳转 |
 | 关键词输入组件 | `keywordInput`、`openBtn`、`openKeyword()` | EditText（预填 + 圆角底 + 按模式换 hint）+「打开」按钮，支持软键盘回车触发；按模式跳对应页面：关键词→分析页，达人→`/daren/search`、视频→`/videosearch`、话题→`/topicsearch`；四种模式统一为**手动抓取**，进入页面后由用户点底部「开始抓取」触发（达人/视频/话题还需手动进详情切分析页签） |
 | 更新入口 | `updateBtn` | 顶栏「更新」按钮 → 手动检查新版本（每次回到前台另有静默自动检查，见「内置版本更新」） |
@@ -294,3 +294,24 @@ https://yejiawei19991118.github.io/douyin-index-tool/douyin-index-extract.user.j
 4. 抓完点「复制 CSV」→ 切到主屏的 PWA → 点「粘贴 CSV」；复制被拒时改用「下载 CSV」，再从「文件」App 导入
 
 桌面 Chrome 也可用篡改猴（Tampermonkey）安装同一脚本。**风险**：采集依赖页面 CSS Modules 类名与 canvas tooltip 结构，抖音改版可能导致失效；高频抓取有账号风控风险，请控制频率并自行评估合规性。
+
+---
+
+## 八、卡密授权（登录激活）`LicenseManager.java` + `ActivationActivity.java`
+
+与「卡密生成器」（`github.com/yejiawei19991118/lmt-cards`）同一套清单制式：清单 `cards.json` 由作者用私钥签发，App 只内置公钥验签，一卡一机、可吊销、可设有效期。
+
+| 组件 | 符号 / 位置 | 职责 |
+| --- | --- | --- |
+| 激活闸门 | `MainActivity.onCreate` | 未激活 / 激活失效时跳 `ActivationActivity` 并 `finish()`；通过后 `refreshIfStaleAsync()` 后台刷新清单 |
+| 机器码 | `LicenseManager.machineCode(ctx)` | `ANDROID_ID`（缺失退回 `MODEL\|DEVICE`）+ 固定盐 `\|dyindex` → SHA-256 → 自定义 base32 取 16 字符 → 每 4 位加 `-`；只取跨会话稳定特征，重装 / 清数据 / 系统升级 / 换语言都不变 |
+| 卡密格式 | `normalize()`、`cardFormatOk()` | 去分隔符并转大写；20 位 `[0-9A-Z]` |
+| 清单拉取 | `fetchAndVerify()`、`MANIFEST_URL`、`MANIFEST_MIRRORS` | GitHub raw 主源 + 两个 jsDelivr 镜像，10s 超时、`Cache-Control: no-store`；首个验签通过者生效并写缓存 |
+| 清单验签 | `parseManifest()`、`canonicalManifestString()`、`Ed25519` | 只认 `ver=2`；规范化串 = `ver\nupdated\nrev\n<卡片行>\n<吊销列表>`（卡片行按 `mc + \0 + card` 排序，内容 `card\|mc\|note\|exp`）；内置公钥（base32 52 字符）做 RFC 8032 Ed25519 验签，失败一律不采纳 |
+| 授权判定 | `decide()` | 顺序：已吊销 → 不在清单 → 一卡一机不匹配 → 已过期（`YYYY-MM-DD` 早于今天）→ 离线凭证超 14 天 |
+| 离线凭证 | `KEY_CACHE`、`credFresh()`、`saveCache()` | 验签通过的清单 + 拉取时间缓存本地；超过 14 天必须联网刷新；系统时间回拨按过期处理 |
+| 激活 / 退出 | `activate()`、`deactivate()` | 联网失败时退回缓存清单（离线凭证）；成功后写入卡密 / 机器码 / 有效期 |
+| 后台刷新 | `refreshIfStaleAsync()` | 缓存超过 24h 时静默拉取一次，让在线吊销与有效期变更尽快生效 |
+| 激活界面 | `ActivationActivity` | 展示并复制本机机器码、输入卡密、激活按钮、状态与提示文案；成功后进入主界面；`AndroidManifest.xml` 中 `android:exported="false"` |
+
+实现约束：清单与验签规则（自定义 base32 字母表、规范化串、Ed25519 公钥 / 签名）与卡密生成器逐字对齐，任一侧改动必须同步；App 运行时仍零第三方依赖，Ed25519 / SHA-512 / Base32 均为自带实现。

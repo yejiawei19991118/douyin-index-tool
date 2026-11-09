@@ -194,6 +194,15 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // 卡密未激活 / 激活已失效：先进入登录激活页，验证通过后再回主界面。
+        if (!LicenseManager.isActivated(this)) {
+            startActivity(new Intent(this, ActivationActivity.class));
+            finish();
+            return;
+        }
+        // 清单缓存较久时后台静默刷新，让在线吊销与有效期变更尽快生效。
+        LicenseManager.refreshIfStaleAsync(this);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(0xFFFFFFFF);
