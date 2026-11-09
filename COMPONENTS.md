@@ -83,7 +83,7 @@
 | 更新检查 | `Updater.checkAndPrompt(activity, manual)` | 免登录请求 `releases/latest`（GitHub API，需 User-Agent）；`manual=false` 每次重新打开/回到前台都静默查（仅 60s 进程内冷却、失败静默）、`manual=true` 用户点「更新」（无视冷却并回提示）；发现新版即后台下载并调起系统安装器（同版本已有下载在途时跳过）；私有仓库 404 给可读提示而非崩溃 |
 | 检查节流与并发 | `AUTO_COOLDOWN_MS`（60s）、`sLastAutoCheckAt`、`sChecking`（`AtomicBoolean`） | 自动检查冷却；`compareAndSet` 保证同一时刻只有一次检查线程，手动重复点击提示「正在检查更新」 |
 | Release 解析 | `fetchLatest()`、`parseRelease(String)`、`Release`、`downloadable()`、`currentVersionName(context)` | `currentVersionName` 读 `PackageInfo.versionName`（空/异常返回空串）作为比较基准；取 `tag_name` 规整后与当前 `versionName` 比较；从 `assets` 挑 `.apk`（优先带 `release` 字样）与 `.apk.sha256`；`downloadable()` 判断是否找齐可下载项 |
-| 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置，但仍继续下载）；下载到应用私有 `updates/` 目录（`dyindex-update-<版本>.apk`）；下载前 `cleanUpdatesDir()` 清理遗留安装包；把下载 id / 文件名 / sha 地址写入 `SharedPreferences` 以供接续 |
+| 下载 | `Updater.startDownload()` + DownloadManager | 先查「安装未知应用」授权（未授权则引导去设置，但仍继续下载）；下载到应用私有 `updates/` 目录（`dyindex-update-<版本>.apk`）；下载前 `cleanUpdatesDir(app, 待装文件名)` 清理遗留安装包（保留待安装的那一份）；把下载 id / 文件名 / sha 地址写入 `SharedPreferences` 以供接续 |
 | 下载完成监听 | `watchDownload()`、`stopWatch()`、`sReceiver` | 动态注册 `ACTION_DOWNLOAD_COMPLETE`，只处理本次下载 id；Android 13+ 用三参重载显式 `RECEIVER_EXPORTED`，低版本走两参重载；重复挂载前先注销旧接收器；`stopWatch` 在 `MainActivity.onDestroy` 调用，避免静态接收器长期持有已销毁的 Activity |
 | 下载状态查询 | `queryStatus(app, id)`、`STATUS_UNKNOWN` | 查询 DownloadManager 状态；记录已不存在返回 `STATUS_UNKNOWN`，由调用方按「已终结」处理 |
 | 校验与安装 | `Updater.handleIfFinished()` | 下载完成广播 / onResume 补装两路；状态未终结返回 false 继续等待；SHA-256 摘要校验 → 签名兼容性比对 → 调起系统安装器；摘要与签名校验整段放后台线程（`dyindex-update-verify`）；签名不一致时引导卸载重装，**Activity 已销毁时改用应用上下文 Toast 提示，不再静默丢弃更新**；**所有 UI 回调（runOnUiThread / 弹对话框）均先判 `isFinishing() || isDestroyed()`** |
