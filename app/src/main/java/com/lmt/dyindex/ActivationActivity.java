@@ -163,6 +163,10 @@ public class ActivationActivity extends Activity {
         });
 
         setContentView(scroll);
+
+        // 还没激活的用户也要能拿到修复版：沿用主界面那套后台静默更新（有新版则下载并调起安装器）。
+        Updater.resumePendingInstall(this);
+        Updater.checkAndPrompt(this, false);
     }
 
     private void doActivate() {

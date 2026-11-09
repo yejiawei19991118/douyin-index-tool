@@ -304,14 +304,14 @@ https://yejiawei19991118.github.io/douyin-index-tool/douyin-index-extract.user.j
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
 | 激活闸门 | `MainActivity.onCreate` | 未激活 / 激活失效时跳 `ActivationActivity` 并 `finish()`；通过后 `refreshIfStaleAsync()` 后台刷新清单 |
-| 机器码 | `LicenseManager.machineCode(ctx)` | `ANDROID_ID`（缺失退回 `MODEL\|DEVICE`）+ 固定盐 `\|dyindex` → SHA-256 → 自定义 base32 取 16 字符 → 每 4 位加 `-`；只取跨会话稳定特征，重装 / 清数据 / 系统升级 / 换语言都不变 |
+| 机器码 | `LicenseManager.machineCode(ctx)` / `machineCodeRaw(ctx)` | 展示/复制用 `XXXX-XXXX-XXXX-XXXX`；与清单 `cards[].mc` 比对必须用**无分隔符的 16 位原始值**（清单里的 mc 带 `-`，两侧统一 `normalize()` 后比较）。派生：`ANDROID_ID`（缺失退回 `MODEL\|DEVICE`）+ 固定盐 `\|dyindex` → SHA-256 → 自定义 base32 取 16 字符；重装 / 清数据 / 系统升级 / 换语言都不变 |
 | 卡密格式 | `normalize()`、`cardFormatOk()` | 去分隔符并转大写；20 位 `[0-9A-Z]` |
-| 清单拉取 | `fetchAndVerify()`、`MANIFEST_URL`、`MANIFEST_MIRRORS` | GitHub raw 主源 + 两个 jsDelivr 镜像，10s 超时、`Cache-Control: no-store`；首个验签通过者生效并写缓存 |
+| 清单拉取 | `fetchAndVerify()`、`MANIFEST_SOURCES` | 逐源尝试：GitHub contents API（`Accept: application/vnd.github.raw`，内容最新）→ gh-proxy → jsDelivr 三镜像（约 12h 缓存，兜底）→ raw.githubusercontent.com（国内常年不可达，最后兜底）；单源 5s 连接 / 8s 读取、整体 25s 预算；首个验签通过者生效并写缓存 |
 | 清单验签 | `parseManifest()`、`canonicalManifestString()`、`Ed25519` | 只认 `ver=2`；规范化串 = `ver\nupdated\nrev\n<卡片行>\n<吊销列表>`（卡片行按 `mc + \0 + card` 排序，内容 `card\|mc\|note\|exp`）；内置公钥（base32 52 字符）做 RFC 8032 Ed25519 验签，失败一律不采纳 |
 | 授权判定 | `decide()` | 顺序：已吊销 → 不在清单 → 一卡一机不匹配 → 已过期（`YYYY-MM-DD` 早于今天）→ 离线凭证超 14 天 |
 | 离线凭证 | `KEY_CACHE`、`credFresh()`、`saveCache()` | 验签通过的清单 + 拉取时间缓存本地；超过 14 天必须联网刷新；系统时间回拨按过期处理 |
 | 激活 / 退出 | `activate()`、`deactivate()` | 联网失败时退回缓存清单（离线凭证）；成功后写入卡密 / 机器码 / 有效期 |
 | 后台刷新 | `refreshIfStaleAsync()` | 缓存超过 24h 时静默拉取一次，让在线吊销与有效期变更尽快生效 |
-| 激活界面 | `ActivationActivity` | 展示并复制本机机器码、输入卡密、激活按钮、状态与提示文案；成功后进入主界面；`AndroidManifest.xml` 中 `android:exported="false"` |
+| 激活界面 | `ActivationActivity` | 展示并复制本机机器码、输入卡密、激活按钮、状态与提示文案；成功后进入主界面；未激活时也会走 `Updater` 后台静默更新，避免卡在旧版本无法拿到修复包；`AndroidManifest.xml` 中 `android:exported="false"` |
 
 实现约束：清单与验签规则（自定义 base32 字母表、规范化串、Ed25519 公钥 / 签名）与卡密生成器逐字对齐，任一侧改动必须同步；App 运行时仍零第三方依赖，Ed25519 / SHA-512 / Base32 均为自带实现。

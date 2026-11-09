@@ -51,20 +51,25 @@ public final class LicenseManager {
     /** 清单超过该时长就顺手后台刷新一次（让在线吊销能尽快生效）。 */
     private static final long REFRESH_AFTER_MS = 24L * 3600 * 1000;
 
-    /** 清单主源（GitHub raw）。 */
-    private static final String MANIFEST_URL =
-            "https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/refs/heads/main/cards.json";
-
-    /** 备用镜像（raw 在国内常被重置；jsDelivr 缓存约 12 小时，仅作兜底）。 */
-    private static final String[] MANIFEST_MIRRORS = {
+    /**
+     * 清单源，按「内容新鲜度 + 国内可达性」排序：
+     * ① GitHub API 与 gh-proxy 走真实源、内容最新；② jsDelivr 系镜像有约 12 小时缓存（刚加的卡密可能还没同步）；
+     * ③ raw.githubusercontent.com 在国内常年不可达，放最后兜底。
+     */
+    private static final String[] MANIFEST_SOURCES = {
+            "https://api.github.com/repos/yejiawei19991118/lmt-cards/contents/cards.json",
+            "https://gh-proxy.com/https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/main/cards.json",
             "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json",
-            "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/cards.json"
+            "https://testingcf.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json",
+            "https://cdn.jsdmirror.com/gh/yejiawei19991118/lmt-cards@main/cards.json",
+            "https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/main/cards.json"
     };
+
+    /** 拉清单的整体时间预算：逐源尝试，超时或超预算即放弃，避免激活按钮长时间无反馈。 */
+    private static final long FETCH_BUDGET_MS = 25000L;
 
     /** 自定义 base32 字母表：去掉易混淆的 I/L/O/U（与生成器一致）。 */
     private static final String ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
-
-    private static final int TIMEOUT_MS = 10000;
 
     private static final String PREFS = "dyindex_license";
     private static final String KEY_CARD = "card";
@@ -106,8 +111,13 @@ public final class LicenseManager {
 
     // ===== 对外入口 =====
 
-    /** 本机机器码（形如 XXXX-XXXX-XXXX-XXXX），用于向作者换取一卡一机的卡密。 */
+    /** 本机机器码（形如 XXXX-XXXX-XXXX-XXXX，用于展示/复制给作者换取卡密）。 */
     public static String machineCode(Context ctx) {
+        return group(machineCodeRaw(ctx), 4);
+    }
+
+    /** 与清单 cards[].mc 比较用的原始机器码（16 位、无分隔符）。 */
+    private static String machineCodeRaw(Context ctx) {
         String androidId = "";
         try {
             androidId = Settings.Secure.getString(ctx.getContentResolver(), Settings.Secure.ANDROID_ID);
@@ -121,7 +131,7 @@ public final class LicenseManager {
         // 只取跨会话稳定的特征：ANDROID_ID 重装/清数据/系统升级都不变。
         // 语言、时区、屏幕尺寸、系统版本号会变，一律不参与，避免同一台机器的机器码漂移。
         String fp = androidId + "|dyindex";
-        return group(base32Encode(hexToBytes(sha256Hex(fp)), 16), 4);
+        return base32Encode(hexToBytes(sha256Hex(fp)), 16);
     }
 
     /** 当前是否已激活（纯本地判定：记录 + 缓存清单，不联网）。 */
@@ -131,7 +141,7 @@ public final class LicenseManager {
         String mc = sp.getString(KEY_MC, "");
         String exp = sp.getString(KEY_EXP, "");
         if (card.isEmpty() || mc.isEmpty()) return false;
-        if (!mc.equals(machineCode(ctx))) return false;
+        if (!mc.equals(machineCodeRaw(ctx))) return false;
         if (isExpired(exp)) return false;
         Manifest m = loadCachedManifest(ctx);
         if (m == null) return false;
@@ -158,7 +168,7 @@ public final class LicenseManager {
 
         prefs(ctx).edit()
                 .putString(KEY_CARD, card)
-                .putString(KEY_MC, machineCode(ctx))
+                .putString(KEY_MC, machineCodeRaw(ctx))
                 .putString(KEY_EXP, d.exp == null ? "" : d.exp)
                 .apply();
         return new Result(true, "激活成功" + (online ? "（在线校验）" : "（离线凭证）"), d.exp);
@@ -205,10 +215,12 @@ public final class LicenseManager {
         }
         Entry e = m.cards.get(card);
         if (e == null) {
-            d.msg = "卡密不在有效清单中";
+            // 带上清单更新时间，便于判断是「卡密没录进去」还是「CDN 缓存还没同步」。
+            d.msg = "卡密不在有效清单中"
+                    + (m.updated == null || m.updated.isEmpty() ? "" : "（清单更新于 " + m.updated + "）");
             return d;
         }
-        if (!e.mc.isEmpty() && !e.mc.equals(machineCode(ctx))) {
+        if (!e.mc.isEmpty() && !e.mc.equals(machineCodeRaw(ctx))) {
             d.msg = "卡密与本机不匹配（一卡一机），请使用本机机器码对应的卡密";
             return d;
         }
@@ -241,14 +253,11 @@ public final class LicenseManager {
 
     // ===== 清单拉取 / 缓存 =====
 
-    /** 依次尝试主源与镜像；返回首个验签通过的清单，全失败返回 null。 */
+    /** 依次尝试各清单源（真实源优先、CDN 兜底）；返回首个验签通过的清单，全失败返回 null。 */
     private static Manifest fetchAndVerify(Context ctx) {
-        List<String> sources = new ArrayList<>();
-        sources.add(MANIFEST_URL);
-        for (String u : MANIFEST_MIRRORS) {
-            if (u != null && !u.isEmpty() && !sources.contains(u)) sources.add(u);
-        }
-        for (String u : sources) {
+        long started = System.currentTimeMillis();
+        for (String u : MANIFEST_SOURCES) {
+            if (System.currentTimeMillis() - started > FETCH_BUDGET_MS) break;
             String raw = httpGet(u);
             if (raw == null) continue;
             Manifest m = parseManifest(raw);
@@ -264,11 +273,14 @@ public final class LicenseManager {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) new URL(urlStr).openConnection();
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(8000);
             conn.setInstanceFollowRedirects(true);
             conn.setRequestProperty("User-Agent", "dyindex-android");
             conn.setRequestProperty("Cache-Control", "no-store");
+            // contents API 只有带这个 Accept 才直接返回文件原文，否则是一段 base64 JSON。
+            conn.setRequestProperty("Accept", urlStr.startsWith("https://api.github.com/")
+                    ? "application/vnd.github.raw" : "application/json");
             if (conn.getResponseCode() != 200) return null;
             InputStream in = conn.getInputStream();
             try {
