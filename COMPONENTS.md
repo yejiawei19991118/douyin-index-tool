@@ -128,7 +128,7 @@
 | 组件 | 符号 / 位置 | 职责 |
 | --- | --- | --- |
 | 页面承载 | `RankingActivity.onCreate` / `onPause` / `onResume` / `onDestroy` | 全屏 WebView 加载 `file:///android_asset/ranking.html`；页面就绪后 `evaluateJavascript` 调 `window.loadFromCsv(csv, keyword, pageType)` 自动分析（`JSONObject.quote` 生成合法 JS 字符串，CSV 内引号/换行/反斜杠均安全）；切后台 `webView.onPause()` 停 JS 计时器与渲染，回前台 `onResume()`；销毁时先 `stopLoading` → 摘除 `DyRankingBridge` → 从视图树移除 → `destroy()`，避免 WebView/Activity 泄漏 |
-| 入参 | `EXTRA_CSV`、`EXTRA_KEYWORD`、`EXTRA_PAGE_TYPE`、`injectCsv()` | 三个 Intent extra；`injectCsv` 对空 CSV / 已销毁 WebView 直接返回（`onPageFinished` 可能在 `onDestroy` 之后回调） |
+| 入参 | `EXTRA_CSV`、`EXTRA_KEYWORD`、`EXTRA_PAGE_TYPE`、`stageCsv()`、`takeStagedCsv()`、`injectCsv()` | CSV 走同进程静态暂存（`stageCsv` 写入、`onCreate` 用 `takeStagedCsv` 取走并清空），避免大 CSV 走 Intent extra 撞 Binder 上限；暂存为空时才回退读 `EXTRA_CSV`（兼容外部带 extra 启动）；`EXTRA_KEYWORD` / `EXTRA_PAGE_TYPE` 仍随 Intent 传递；`injectCsv` 对空 CSV / 已销毁 WebView 直接返回（`onPageFinished` 可能在 `onDestroy` 之后回调） |
 | 页型标签 | `PAGE_TYPE_LABEL` / `tipsHTML()` | 控制区标题按页型显示「当前关键词 / 当前话题 / 当前达人 / 当前视频」；标签独占一行居中、`white-space:nowrap` 固定不收缩（不会被长标题压成竖排），正文**完整展示不截断**，仅在超长英文串处强制换行 |
 | 数据入口 | `window.loadFromCsv()`、`parseCsv()`、`parseCsvText()` | 原生传入 CSV 文本 → 内置 RFC4180 解析器（无第三方依赖，返回**二维数组**）→ `buildTable` → `processTable`；自动完成清洗、打分、四象限、二级混合榜。两条入口共用同一解析器：原生走 `loadFromCsv → parseCsvText`，网页版走 `handleFile → parseCsv → parseCsvText`，后者只做「空结果判错」，不得再按 PapaParse 的 `{ rows }` 结构取数 |
 | 预挂载入口 | `window.__rankingPayload`、`window.__autoLoadRanking()` | 原生可在注入前把 `{csv, keyword, pageType}` 挂到 `window`，`init()` 检测到即自动载入，省去 `evaluateJavascript` 的时序等待 |
@@ -255,7 +255,7 @@
 | 用户脚本头部 | `buildUserscript()` 生成 | `@name` 抖音指数人群分析抓取（网页版）、`@namespace`（仓库地址）、`@version` = 完整版本号（与 APK/PWA 同源）、`@description`、`@match https://creator.douyin.com/*`、`@run-at document-idle`、`@grant none`、`@noframes`、`@homepageURL` / `@downloadURL` / `@updateURL` |
 | 四入口地址模板 | `readPageUrlTemplates()` + `PAGE_URLS` + `pageUrl(type, kw)` | 构建时从 `AppUrls.java` 解析 `BASE_URL`、四个路径常量与各 `return` 表达式，生成含 `{kw}` 占位符的模板注入用户脚本：keyword = `<BASE>/analysis?keyword={kw}&tab=crowd&appName=aweme&source=creator`、daren = `<BASE>/daren/search?keyword={kw}`、video = `<BASE>/videosearch?query={kw}`、topic = `<BASE>/topicsearch?topic={kw}`；`pageUrl()` 用 `encodeURIComponent` 替换占位符，`openPage()` 在当前标签页跳转（脚本随新页面再次注入）。改 APK 地址或参数后脚本自动跟随 |
 | 复制 / 下载 CSV | `showResult()`、`doCopy()`、`doDownload()`、`copyText()`、`fallbackCopy()` | 抓完自动尝试复制一次（Safari 因非用户手势可能拒绝，则提示手动点按钮）；优先 `navigator.clipboard.writeText`，被拒时退回隐藏 textarea + `document.execCommand('copy')`；下载用 Blob（前置 BOM 保证 Excel 不乱码）+ `<a download>`，文件名 `抖音指数_<页名>_<页型>.csv`（非法字符替换、限 80 字），2s 后释放 URL |
-| 部署 | `.github/workflows/pages.yml` | 推送 `main` 自动转换并发布到 GitHub Pages，产物自检（关键文件 + 注入标记）不通过即失败；见「六、构建与交付链」 |
+| 部署 | `.github/workflows/pages.yml` | 推送 `main` 自动转换并发布到 GitHub Pages：构建 → `node --check` 四个脚本 + `node --test tools/scoring.test.js` → 产物自检（关键文件 / 图标尺寸 / 注入标记）不通过即失败；见「六、构建与交付链」 |
 | 使用方式（iPhone） | Safari 打开线上地址 → 分享 → 添加到主屏幕 | 全屏无地址栏运行；首次联网后资源进缓存，断网仍可导入分析；数据只在本机处理 |
 | 与 App 的边界 | — | 数据来源：只用「网页端抓取脚本」复制/下载 CSV 后导入；导出沿用页面既有逻辑，网页端走浏览器下载（不写系统下载目录）；Excel 解析依赖 XLSX，网页版未加载该库，故仅支持 CSV / JSON |
 
