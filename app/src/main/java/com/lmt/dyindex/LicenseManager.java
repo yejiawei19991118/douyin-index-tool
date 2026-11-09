@@ -53,16 +53,11 @@ public final class LicenseManager {
     private static final long REFRESH_AFTER_MS = 24L * 3600 * 1000;
 
     /**
-     * 清单源，按「内容新鲜度 + 国内可达性」排序：
-     * ① GitHub API 与 gh-proxy 走真实源、内容最新；② jsDelivr 系镜像有约 12 小时缓存（刚加的卡密可能还没同步）；
-     * ③ raw.githubusercontent.com 在国内常年不可达，放最后兜底。
+     * 清单源，只用两个：raw.githubusercontent.com 取最新内容，cdn.jsdelivr.net 做镜像兜底。
      */
     private static final String[] MANIFEST_SOURCES = {
-            "https://api.github.com/repos/yejiawei19991118/lmt-cards/contents/cards.json",
-            "https://gh-proxy.com/https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/main/cards.json",
-            "https://testingcf.jsdelivr.net/gh/yejiawei19991118/lmt-cards@main/cards.json",
-            "https://cdn.jsdmirror.com/gh/yejiawei19991118/lmt-cards@main/cards.json",
-            "https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/main/cards.json"
+            "https://raw.githubusercontent.com/yejiawei19991118/lmt-cards/refs/heads/main/cards.json",
+            "https://cdn.jsdelivr.net/gh/yejiawei19991118/lmt-cards/cards.json"
     };
 
     /** 拉清单的整体时间预算：逐源尝试，超时或超预算即放弃，避免激活按钮长时间无反馈。 */
@@ -272,9 +267,7 @@ public final class LicenseManager {
             conn.setInstanceFollowRedirects(true);
             conn.setRequestProperty("User-Agent", "dyindex-android");
             conn.setRequestProperty("Cache-Control", "no-store");
-            // contents API 只有带这个 Accept 才直接返回文件原文，否则是一段 base64 JSON。
-            conn.setRequestProperty("Accept", urlStr.startsWith("https://api.github.com/")
-                    ? "application/vnd.github.raw" : "application/json");
+            conn.setRequestProperty("Accept", "application/json");
             if (conn.getResponseCode() != 200) return null;
             InputStream in = conn.getInputStream();
             try {
