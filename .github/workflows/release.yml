@@ -70,6 +70,22 @@ jobs:
           echo "tag=$TAG"        >> "$GITHUB_OUTPUT"
           echo "DYINDEX_BUILD_NUMBER=$N" >> "$GITHUB_ENV"
 
+      # 同一提交重复触发（或 amend/rebase 后重推）时版本号不变，
+      # 直接发布会让新 APK 挂到旧 Release 上；这里提前拦下，避免版本内容错位。
+      - name: 检查版本标签是否已被占用
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.ver.outputs.tag }}"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "由标签触发（$TAG），跳过占用检查"
+            exit 0
+          fi
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "::error::$TAG 已存在（当前提交数未变化）。请产生新提交后再发布。"
+            exit 1
+          fi
+          echo "标签 $TAG 可用"
+
       - name: 安装 JDK 17
         uses: actions/setup-java@v5
         with:

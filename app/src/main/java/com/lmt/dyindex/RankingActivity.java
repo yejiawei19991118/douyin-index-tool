@@ -41,6 +41,20 @@ public class RankingActivity extends Activity {
     public static final String EXTRA_KEYWORD = "keyword";
     public static final String EXTRA_PAGE_TYPE = "pageType";
 
+    // 同进程一次性交接：CSV 动辄数百 KB，走 Intent extra 会撞 Binder 事务上限（约 1MB）
+    // 并抛 TransactionTooLargeException；静态字段只在本进程内有效，进程被杀时 Activity 也一并消失。
+    private static volatile String sStagedCsv;
+
+    static void stageCsv(String value) {
+        sStagedCsv = value;
+    }
+
+    private static String takeStagedCsv() {
+        String v = sStagedCsv;
+        sStagedCsv = null;
+        return v;
+    }
+
     private WebView webView;
     private String csv;
     private String keyword;
@@ -51,7 +65,9 @@ public class RankingActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        csv = getIntent().getStringExtra(EXTRA_CSV);
+        csv = takeStagedCsv();
+        // 兼容旧入口（或将来从外部带 extra 启动）：暂存为空时才读 Intent。
+        if (csv == null) csv = getIntent().getStringExtra(EXTRA_CSV);
         keyword = getIntent().getStringExtra(EXTRA_KEYWORD);
         pageType = getIntent().getStringExtra(EXTRA_PAGE_TYPE);
         if (csv == null) csv = "";

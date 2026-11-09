@@ -229,6 +229,12 @@
   }
 
   async function importFile(file) {
+    // 与页面内 MAX_UPLOAD_MB 保持一致：超限直接拒绝，避免把超大文件整个读进内存导致移动端卡死
+    const MAX_IMPORT_MB = 50;
+    if (file && file.size > MAX_IMPORT_MB * 1024 * 1024) {
+      toast('文件超过 ' + MAX_IMPORT_MB + 'MB，请拆分后再导入');
+      return;
+    }
     const pill = byId('pwaFileName');
     if (pill) {
       pill.textContent = (file.name || 'CSV') + (file.size ? ' · ' + formatSize(file.size) : '');

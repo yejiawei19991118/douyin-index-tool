@@ -105,8 +105,10 @@ function pngChunk(type, data) {
   head.writeUInt32BE(data.length, 0);
   head.write(type, 4, 'ascii');
   const body = Buffer.concat([head, data]);
+  // CRC 只覆盖「类型 + 数据」，长度字段不参与计算；带上长度会让 IEND 等块的校验值错误，
+  // 严格校验的 PNG 解码器（含部分图标审计工具）会直接判定文件损坏。
   const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(body), 0);
+  crc.writeUInt32BE(crc32(Buffer.concat([Buffer.from(type, 'ascii'), data])), 0);
   return Buffer.concat([body, crc]);
 }
 

@@ -39,6 +39,16 @@ jobs:
       - name: 转换排名页为 PWA
         run: node tools/build-pwa.js
 
+      # 语法与算法闸门：脚本有语法错误或评分口径跑偏时直接失败，不发布
+      - name: JavaScript 检查与评分单测
+        run: |
+          set -euo pipefail
+          node --check pwa-dist/scoring.js
+          node --check pwa-dist/web-boot.js
+          node --check pwa-dist/sw.js
+          node --check pwa-dist/douyin-index-extract.user.js
+          node --test tools/scoring.test.js
+
       # 发布前自检：任一关键文件缺失或注入失效都不发布
       - name: 产物自检
         run: |
@@ -48,6 +58,13 @@ jobs:
                    icons/icon-192.png icons/icon-512.png icons/icon-180.png; do
             test -s "pwa-dist/$f" || { echo "::error::缺少 pwa-dist/$f"; exit 1; }
           done
+          # 图标必须是解码器可识别的 PNG（尺寸也校验），避免 CRC 写错之类的问题悄悄发布
+          file pwa-dist/icons/icon-192.png | grep -F 'PNG image data, 192 x 192' >/dev/null \
+            || { echo "::error::icon-192.png 不是合法的 192x192 PNG"; exit 1; }
+          file pwa-dist/icons/icon-512.png | grep -F 'PNG image data, 512 x 512' >/dev/null \
+            || { echo "::error::icon-512.png 不是合法的 512x512 PNG"; exit 1; }
+          file pwa-dist/icons/icon-180.png | grep -F 'PNG image data, 180 x 180' >/dev/null \
+            || { echo "::error::icon-180.png 不是合法的 180x180 PNG"; exit 1; }
           grep -q 'rel="manifest"' pwa-dist/index.html || { echo "::error::index.html 未注入 manifest"; exit 1; }
           grep -q 'src="web-boot.js"' pwa-dist/index.html || { echo "::error::index.html 未注入启动脚本"; exit 1; }
           grep -q '@match.*creator\.douyin\.com' pwa-dist/douyin-index-extract.user.js \

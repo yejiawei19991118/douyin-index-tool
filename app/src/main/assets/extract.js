@@ -127,13 +127,18 @@
   function parseTip(raw) {
     if (!raw) return null;
     var s = String(raw).replace(/\s+/g, '').replace(/点击查看兴趣详情/g, '');
-    var m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%TGI(\d+(?:\.\d+)?)$/);
-    if (m && m[1]) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
-    m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%TGI(\d+(?:\.\d+)?)/);
-    if (m && m[1]) return { name: m[1], ratio: m[2] + '%', tgi: m[3] };
+    // 占比可能带千分位（1,234%），TGI 可能为负或以 -- 占位；统一去掉千分位后再交给排名侧解析
+    var m = s.match(/^(.*?)占比(-?[\d,]+(?:\.\d+)?)%TGI(-?[\d,]+(?:\.\d+)?|--)/);
+    if (m && m[1]) {
+      return {
+        name: m[1],
+        ratio: m[2].replace(/,/g, '') + '%',
+        tgi: m[3] === '--' ? '' : m[3].replace(/,/g, '')
+      };
+    }
     // 手机分布等图表的 tooltip 可能没有 TGI：只有占比的形态也收（TGI 留空）。
-    m = s.match(/^(.*?)占比(\d+(?:\.\d+)?)%$/);
-    if (m && m[1]) return { name: m[1], ratio: m[2] + '%', tgi: '' };
+    m = s.match(/^(.*?)占比(-?[\d,]+(?:\.\d+)?)%/);
+    if (m && m[1]) return { name: m[1], ratio: m[2].replace(/,/g, '') + '%', tgi: '' };
     return null;
   }
 
@@ -148,11 +153,12 @@
     var r;
     try { r = canvas.getBoundingClientRect(); } catch (e) { return pts; }
     if (!r || r.width < 2 || r.height < 2) return pts;
-    var ys = [0.25, 0.5, 0.75];
+    var ys = [0.12, 0.3, 0.5, 0.72];
+    var lastText = '';
     for (var yi = 0; yi < ys.length; yi++) {
       var y = r.top + r.height * ys[yi];
-      for (var i = 1; i <= 70; i++) {
-        var x = r.left + r.width * (i / 71);
+      for (var i = 1; i <= 56; i++) {
+        var x = r.left + r.width * (i / 57);
         try {
           canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y, bubbles: true }));
           canvas.dispatchEvent(new MouseEvent('mouseover', { clientX: x, clientY: y, bubbles: true }));
@@ -163,8 +169,11 @@
         await sleep(15);
         var disp;
         try { disp = getComputedStyle(tip).display; } catch (e) { disp = 'none'; }
-        if (disp !== 'none' && (tip.innerText || '').trim()) {
-          var it = parseTip(tip.innerText);
+        var txt = disp !== 'none' ? (tip.innerText || '').trim() : '';
+        // tooltip 未变化说明这一点没命中新柱子（或仍是上一次残留），不必重复解析
+        if (txt && txt !== lastText) {
+          lastText = txt;
+          var it = parseTip(txt);
           if (it && !seen[it.name]) { seen[it.name] = 1; pts.push(it); }
         }
       }

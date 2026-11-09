@@ -865,6 +865,9 @@ function cleanData(table, fieldMatch) {
   afterZero.forEach(function (r) {
     const isParent = r.block === CONTENT_BLOCK && !isSecondaryRow(r);
     if (isParent) return;
+    /* 异常行（占比 >0 但 TGI=0）会被后面的步骤排除出榜单，不能让它抢先占住重复键，
+       否则会挤掉同组里本该保留的正常行。 */
+    if (r._tgiAbnormal) return;
     const key = r.keyword + SEP + r.block + SEP + r.category;
     if (generalFirst.has(key)) {
       stats.duplicate += 1;
@@ -1567,6 +1570,7 @@ function sortValue(row, key) {
     case 'P': return row.P;
     case 'composite': return row.composite;
     case 'rank': return row.rank;
+    case 'rankLo': return isFiniteNumber(row.rankLo) ? row.rankLo : row.rank;
     case 'R': return row.R;
     case 'seq': return row.seq;
     default: return null;
@@ -2655,6 +2659,13 @@ function parseCsvText(text) {
 /* 原生端在页面加载完成后调用：直接把抓取到的 CSV 文本灌入排名工具。 */
 window.loadFromCsv = function (csvText, sourceName, pageType) {
   try {
+    /* 原生可能在上一份数据还在读取/解析时再次注入：先作废旧回调（令牌 + 中断 FileReader），
+       否则旧表的 processTable 会把刚注入的新数据覆盖掉。 */
+    state.generation += 1;
+    if (state.activeReader) {
+      try { state.activeReader.abort(); } catch (e) { /* ignore */ }
+      state.activeReader = null;
+    }
     resetForNewData();
     clearError();
     state.pageType = pageType || '';

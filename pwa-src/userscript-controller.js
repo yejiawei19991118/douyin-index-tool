@@ -25,6 +25,7 @@
   var els = {};
   var lastCsv = '';
   var lastName = '抖音指数_人群分析.csv';
+  var runTimer = null;
 
   var PAGE_TYPE_LABEL = { keyword: '关键词', topic: '话题', daren: '达人', video: '视频' };
 
@@ -259,6 +260,8 @@
   }
 
   function finish() {
+    // 先清掉本轮兜底定时器，否则它会在下一轮抓取中途把按钮提前恢复
+    if (runTimer) { clearTimeout(runTimer); runTimer = null; }
     if (!els.fab) return;
     els.fab.disabled = false;
     els.fab.textContent = '再次抓取';
@@ -286,7 +289,9 @@
     // __dyRun 内部已做异常捕获，异常会走 DyBridge.onError
     window.__dyRun();
     // 兜底：极端情况下 extract.js 未回调，3 分钟后恢复按钮，避免界面卡死
-    setTimeout(function () {
+    if (runTimer) clearTimeout(runTimer);
+    runTimer = setTimeout(function () {
+      runTimer = null;
       if (els.fab && els.fab.disabled) {
         finish();
         setStatus('抓取超时：请确认页面已加载完整后重试。', true);
@@ -422,6 +427,11 @@
       return;
     }
     ensureUI();
+    // 创作者中心切路由时可能整体替换 body，把面板一起清掉；定期检查并按需重建。
+    // 只是 isConnected 判断，开销可忽略。
+    setInterval(function () {
+      try { ensureUI(); } catch (e) { /* ignore */ }
+    }, 1500);
   }
 
   boot();

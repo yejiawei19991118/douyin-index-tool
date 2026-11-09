@@ -346,6 +346,7 @@ public class MainActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (destroyed) return;
                 // 每次开始加载（含登录重定向）都重置超时并显示当前主机，方便定位卡在哪个页面。
                 ui.removeCallbacks(loadTimeoutRunnable);
                 ui.removeCallbacks(stuckWatchdog);
@@ -363,6 +364,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                if (destroyed) return;
                 ui.removeCallbacks(loadTimeoutRunnable);
                 // 登录跳回后会写入新的登录 Cookie；立即 flush 落盘，避免本次进程被回收后登录态丢失。
                 CookieManager.getInstance().flush();
@@ -570,6 +572,9 @@ public class MainActivity extends Activity {
     private volatile String pageNameCache = "";
     // 页型（keyword/topic/daren/video）：排名页据此把「当前关键词」显示成当前话题/达人/视频。
     private volatile String pageTypeCache = "";
+    // onDestroy 之后 WebView 仍可能回调 onPageStarted/onPageFinished；
+    // 置位后这些回调直接返回，避免销毁流程里再 postDelayed 出新的定时任务。
+    private boolean destroyed = false;
 
     // 打开综合排名分析页：把最近一次抓取的 CSV 直接传入，页面侧自动载入分析。
     private void openRanking() {
@@ -578,8 +583,10 @@ public class MainActivity extends Activity {
         // 排名页的标题 / 导出文件名 / CSV 首列按页面类型取各自标识（pageNameCache），
         // 抓取侧没识别出名称时用用户输入兜底。
         String rankName = pageNameCache.isEmpty() ? keywordCache : pageNameCache;
+        // CSV 可能上千行（数百 KB），走 Intent extra 会撞 Binder 事务上限（约 1MB）；
+        // 同进程内改用静态暂存交接，Intent 只传轻量参数。
+        RankingActivity.stageCsv(csv);
         Intent intent = new Intent(this, RankingActivity.class);
-        intent.putExtra(RankingActivity.EXTRA_CSV, csv);
         intent.putExtra(RankingActivity.EXTRA_KEYWORD, rankName);
         intent.putExtra(RankingActivity.EXTRA_PAGE_TYPE, pageTypeCache);
         startActivity(intent);
@@ -676,6 +683,10 @@ public class MainActivity extends Activity {
         // 切后台前把内存中的登录 Cookie 落盘，进程被回收后仍能免登录。
         CookieManager.getInstance().flush();
         ui.removeCallbacks(pollReinject);
+        // 超时提示与卡死看门狗只在页面可见时才有意义：否则切到后台/排名页 20s 后
+        // 仍会 evaluateJavascript 甚至 reload，白白耗电并打断用户。
+        ui.removeCallbacks(loadTimeoutRunnable);
+        ui.removeCallbacks(stuckWatchdog);
         super.onPause();
     }
 
@@ -690,9 +701,13 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        // 先置位再 loadUrl("about:blank")：否则 onPageStarted/onPageFinished 会在销毁过程中
+        // 重新 postDelayed 超时与看门狗任务，持有已销毁的 Activity。
+        destroyed = true;
         ui.removeCallbacks(pollReinject);
         ui.removeCallbacks(loadTimeoutRunnable);
         ui.removeCallbacks(stuckWatchdog);
+        Updater.stopWatch(this);
         if (webView != null) {
             webView.loadUrl("about:blank");
             webView.stopLoading();

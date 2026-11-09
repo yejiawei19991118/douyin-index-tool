@@ -37,8 +37,10 @@ self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys()
       .then(function (keys) {
-        return Promise.all(keys.filter(function (k) { return k !== CACHE_NAME; })
-          .map(function (k) { return caches.delete(k); }));
+        // 只清本应用（dyrank-pwa- 前缀）的旧缓存；GitHub Pages 同域可能还有其它项目的缓存
+        return Promise.all(keys.filter(function (k) {
+          return k.indexOf('dyrank-pwa-') === 0 && k !== CACHE_NAME;
+        }).map(function (k) { return caches.delete(k); }));
       })
       .then(function () { return self.clients.claim(); })
   );
@@ -53,11 +55,21 @@ self.addEventListener('fetch', function (event) {
     event.respondWith(
       fetch(req)
         .then(function (res) {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put('index.html', copy); });
+          // 只有成功响应才写进离线壳，否则 404/5xx 错误页会被当成「离线可用页面」长期缓存
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then(function (cache) { cache.put('index.html', copy); });
+          }
           return res;
         })
-        .catch(function () { return caches.match('index.html'); })
+        .catch(function () {
+          return caches.match('index.html').then(function (r) {
+            return r || new Response('离线且没有可用缓存', {
+              status: 503,
+              headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+            });
+          });
+        })
     );
     return;
   }

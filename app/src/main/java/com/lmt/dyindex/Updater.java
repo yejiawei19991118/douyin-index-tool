@@ -301,7 +301,9 @@ public final class Updater {
                     DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
             req.setDestinationInExternalFilesDir(app, null, ApkFileProvider.PATH + "/" + fileName);
             // 安装器读完文件前不能删，所以统一在下一次下载前清理遗留安装包，避免长期堆积
-            cleanUpdatesDir(app);
+            String pendingName = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getString(KEY_PENDING_NAME, "");
+            cleanUpdatesDir(app, pendingName);
             long id = dm.enqueue(req);
             // 记住本次下载：进程若在下载期间被回收，onResume 可据此接续安装
             app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
@@ -464,16 +466,31 @@ public final class Updater {
                 .remove(KEY_PENDING_SHA_URL).apply();
     }
 
-    /** 清掉共享目录里遗留的安装包。 */
-    private static void cleanUpdatesDir(Context app) {
+    /** 清掉共享目录里遗留的安装包；keepName 为待安装/待下载的那一份，必须保留。 */
+    private static void cleanUpdatesDir(Context app, String keepName) {
         try {
             File[] files = ApkFileProvider.updatesDir(app).listFiles();
             if (files == null) return;
+            String keep = keepName == null ? "" : keepName;
             for (File f : files) {
-                if (f.isFile()) f.delete();
+                if (!f.isFile()) continue;
+                // 安装器已拉起但用户尚未确认时切回应用会再次触发下载流程，
+                // 此时绝不能删掉正在被安装器读取的包（否则安装会报解析失败）。
+                if (f.getName().equals(keep)) continue;
+                if (f.getName().endsWith(".apk")) f.delete();
             }
         } catch (Throwable ignored) {
         }
+    }
+
+    /** 页面销毁时摘掉下载完成监听：接收器不能长期持有已销毁的 Activity。 */
+    static void stopWatch(Context app) {
+        if (sReceiver == null) return;
+        try {
+            app.unregisterReceiver(sReceiver);
+        } catch (Throwable ignored) {
+        }
+        sReceiver = null;
     }
 
     private static void installApk(Context app, File file) {
